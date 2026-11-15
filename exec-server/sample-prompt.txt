@@ -1,0 +1,5 @@
+This is a demo task.
+
+1. Ask me three task-related questions: one free-text, one single-choice, and one multiple-choice.
+2. Create a fictive implementation plan and ask me to review it. Wait for explicit approval before continue.
+3. Launch subagents to translate "Hello World" into German, French and Dutch. 

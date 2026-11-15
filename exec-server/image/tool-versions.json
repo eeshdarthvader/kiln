@@ -1,0 +1,35 @@
+{
+  "mise": {
+    "version": "2026.11.6",
+    "downloads": {
+      "arm64": {
+        "url": "https://github.com/jdx/mise/releases/download/v2026.11.6/mise-v2026.11.6-linux-arm64.tar.gz",
+        "sha256": "c5c90bea46cae89fd02d09a034e5e2d171abbbb313dab9baa833ee65a8cd996c"
+      },
+      "amd64": {
+        "url": "https://github.com/jdx/mise/releases/download/v2026.11.6/mise-v2026.11.6-linux-x64.tar.gz",
+        "sha256": "d6ebb6f5601bdf5a8d1d56028b24fe575f45075b989941ccc920f95161c5fa28"
+      }
+    }
+  },
+  "npm": {
+    "version": "11.21.2",
+    "download": {
+      "url": "https://registry.npmjs.org/npm/-/npm-11.21.2.tgz",
+      "sha256": "8ad8563b81e71b90ef405b140bccf3ba9b5e7884ab210bd49ee4e2f4bc6f61f5"
+    }
+  },
+  "node": {
+    "version": "26.13.1",
+    "downloads": {
+      "arm64": {
+        "url": "https://nodejs.org/dist/v26.13.1/node-v26.13.1-linux-arm64.tar.gz",
+        "sha256": "80a330b35415382878df18d41afbd106ea89bfb3be0087d6608e289a14c5cc7d"
+      },
+      "amd64": {
+        "url": "https://nodejs.org/dist/v26.13.1/node-v26.13.1-linux-x64.tar.gz",
+        "sha256": "518674de2b621728a5e4486f5fb3b7d2900bb3cc4aa97969edaa463db99f9778"
+      }
+    }
+  }
+}

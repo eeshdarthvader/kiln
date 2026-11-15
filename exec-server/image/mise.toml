@@ -1,0 +1,11 @@
+[settings]
+idiomatic_version_file_enable_tools = ["node", "java", "terraform", "yarn", "pnpm"]
+
+# Keep explicit package-manager installs independent of the project's Node version.
+[settings.npm]
+package_manager = "npm"
+
+# Avoid the plugin backends for project package-manager versions.
+[tool_alias]
+yarn = "npm:yarn"
+pnpm = "npm:pnpm"
