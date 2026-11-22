@@ -50,6 +50,24 @@ export function AttachmentContent({ attachment }: { attachment: Attachment }) {
           <Markdown text={attachment.summary} />
           <h3 className="content-subheading">Rationale</h3>
           <Markdown text={attachment.rationale} />
+          {attachment.options?.length ? (
+            <>
+              <h3 className="content-subheading">Options considered</h3>
+              <ul>
+                {attachment.options.map((option) => (
+                  <li key={option}>{option}</li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+          {(attachment.reversibility || attachment.blastRadius) && (
+            <p className="muted small">
+              {attachment.reversibility &&
+                `Reversibility: ${attachment.reversibility.replace('_', ' ')}`}
+              {attachment.reversibility && attachment.blastRadius && ' · '}
+              {attachment.blastRadius && `Blast radius: ${attachment.blastRadius}`}
+            </p>
+          )}
         </>
       );
     case 'evidence':
@@ -95,7 +113,7 @@ export function Attachments({
                   <span>
                     <strong>{attachment.title}</strong>
                     <small>
-                      {attachment.kind.replaceAll('_', ' ')} ·{' '}
+                      {attachment.kind.replaceAll('_', ' ')} · {attachment.stage} ·{' '}
                       <DateLabel date={attachment.createdAt} />
                     </small>
                   </span>

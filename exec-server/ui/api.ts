@@ -1,4 +1,4 @@
-export type Api = <T>(path: string, method?: 'GET' | 'PUT' | 'POST', body?: unknown) => Promise<T>;
+export type Api = <T>(path: string, method?: 'GET' | 'POST', body?: unknown) => Promise<T>;
 
 export class RequestError extends Error {
   readonly status: number;
@@ -44,7 +44,54 @@ export function createApi(token: string): Api {
   };
 }
 
-export const taskPath = (id: string) => `/tasks/${encodeURIComponent(id)}`;
+export const runPath = (id: string) => `/runs/${encodeURIComponent(id)}`;
+
+/**
+ * Follows the server's event stream. `fetch` is used instead of EventSource so the API token
+ * travels in a header, never in the URL. Reconnects until the returned function is called.
+ */
+export function subscribe(
+  token: string,
+  onRun: (run: unknown) => void,
+  onState: (connected: boolean) => void,
+): () => void {
+  const controller = new AbortController();
+  void (async () => {
+    while (!controller.signal.aborted) {
+      try {
+        const response = await fetch('/v1/events', {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          signal: controller.signal,
+        });
+        if (!response.ok || !response.body) throw new Error(`events ${response.status}`);
+        onState(true);
+        const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+        let buffer = '';
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += value;
+          for (let end = buffer.indexOf('\n\n'); end >= 0; end = buffer.indexOf('\n\n')) {
+            const block = buffer.slice(0, end);
+            buffer = buffer.slice(end + 2);
+            const data = block
+              .split('\n')
+              .filter((line) => line.startsWith('data: '))
+              .map((line) => line.slice(6))
+              .join('\n');
+            if (block.startsWith('event: run') && data) onRun(JSON.parse(data));
+          }
+        }
+      } catch {
+        // Fall through to the retry below.
+      }
+      if (controller.signal.aborted) return;
+      onState(false);
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+  })();
+  return () => controller.abort();
+}
 export const errorText = (error: unknown) =>
   error instanceof Error ? error.message : 'The request failed. Try again.';
 export const wasRejected = (error: unknown) =>

@@ -3,31 +3,30 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import type { Request, Response } from 'express';
 import { z, ZodError } from 'zod';
 import type { Core } from './core.ts';
-import { SawdError } from './domain.ts';
+import { FactoryError } from './domain.ts';
 import { errorEnvelope } from './http.ts';
-import { attachmentSchema, idSchema, reportSchema } from './validation.ts';
-import {
-  reportingInstructions,
-  reportingInstructionsReference,
-  reportingServerName,
-} from './reporting-instructions.ts';
+import { reportingInstructions, reportingServerName } from './reporting-instructions.ts';
+import { attachmentSchema, idSchema, parse, reportSchema, stageSchema } from './validation.ts';
 
+/** A stateless MCP server per request. The run and stage come from the URL, never from the agent. */
 export async function handleMcp(
   core: Core,
   req: Request,
   res: Response,
   ready: () => boolean,
-  taskId?: string,
+  scope?: { runId: string; stage: string },
 ) {
-  if (taskId !== undefined) core.record(taskId);
+  if (scope) {
+    core.get(scope.runId);
+    parse(stageSchema, scope.stage);
+  }
   const server = new McpServer(
-    { name: reportingServerName, version: '0.1.0' },
-    { instructions: reportingInstructionsReference },
+    { name: reportingServerName, version: '0.2.0' },
+    { instructions: 'Call get_reporting_instructions before starting work.' },
   );
-  const operationId = idSchema;
   const invoke = (operation: () => unknown) => {
     try {
-      if (!ready()) throw new SawdError('SAWD is not ready.', 503, 'NOT_READY');
+      if (!ready()) throw new FactoryError('The factory is not ready.', 503, 'NOT_READY');
       return { content: [{ type: 'text' as const, text: JSON.stringify(operation()) }] };
     } catch (error) {
       return {
@@ -37,7 +36,7 @@ export async function handleMcp(
             type: 'text' as const,
             text: JSON.stringify(
               errorEnvelope(
-                error instanceof ZodError ? new SawdError('Invalid tool arguments.') : error,
+                error instanceof ZodError ? new FactoryError('Invalid tool arguments.') : error,
                 'Unable to process this tool call.',
               ),
             ),
@@ -55,25 +54,28 @@ export async function handleMcp(
     },
     async () => ({ content: [{ type: 'text', text: reportingInstructions }] }),
   );
-  if (taskId !== undefined) {
+  if (scope) {
     server.registerTool(
       'create_attachment',
       {
         description:
-          'Call when producing a consequential decision and rationale, useful artifact, evidence, or context reference. Attachments are immutable; save revisions separately. Retry uncertain calls with the same operation ID and payload.',
-        inputSchema: z.object({ operationId, attachment: attachmentSchema }).strict(),
+          'Keep a consequential decision and its rationale, a useful artifact, evidence, or a context reference with the run. Attachments are immutable. Retry uncertain calls with the same operation ID and payload.',
+        inputSchema: z.object({ operationId: idSchema, attachment: attachmentSchema }).strict(),
       },
       async (args) =>
-        invoke(() => core.createAttachment(taskId, args.operationId, args.attachment)),
+        invoke(() =>
+          core.createAttachment(scope.runId, scope.stage, args.operationId, args.attachment),
+        ),
     );
     server.registerTool(
       'report_status',
       {
         description:
-          'Report running when starting, resuming, or making meaningful progress; input_required before asking the user a question through the native question tool or chat, requesting approval, or waiting for input; done after completion; failed when unable to complete. Report running after receiving input and before continuing. Include the full current plan: {steps} when establishing the plan, after substantial changes, and at milestones, including completion; omit it only when unchanged. Retry uncertain calls with the same operation ID and report.',
-        inputSchema: z.object({ operationId, report: reportSchema }).strict(),
+          'Report this stage: running at start and milestones; done when the stage is complete (review stages add verdict pass or changes_requested, the pr stage adds prUrl); input_required when a human must decide something; failed when the stage cannot be completed. done, input_required and failed end the stage. Include plan: {steps} when the plan is set or changes. Retry uncertain calls with the same operation ID and report.',
+        inputSchema: z.object({ operationId: idSchema, report: reportSchema }).strict(),
       },
-      async (args) => invoke(() => core.reportStatus(taskId, args.operationId, args.report)),
+      async (args) =>
+        invoke(() => core.reportStatus(scope.runId, scope.stage, args.operationId, args.report)),
     );
   }
   const transport = new StreamableHTTPServerTransport({
