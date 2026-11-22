@@ -2,95 +2,45 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { configuration } from './config.ts';
 
-const credentials = { OPENCODE_PASSWORD: 'test-password' };
-
-test('configuration defaults keep MCP private and expose fixed listener ports', () => {
-  assert.deepEqual(configuration(credentials), {
-    port: 3775,
-    mcpPort: 3776,
-    opencodeUrl: 'http://127.0.0.1:3773',
-    opencodePassword: 'test-password',
-    workspaceRoot: '/workspace/sawd',
-    startDocker: false,
-  });
-  assert.equal(configuration({ ...credentials, SAWD_START_DOCKER: 'true' }).startDocker, true);
-  assert.equal(configuration({ ...credentials, SAWD_START_DOCKER: 'false' }).startDocker, false);
-  assert.equal(
-    configuration({ ...credentials, SAWD_API_TOKEN: 'local-secret' }).apiToken,
-    'local-secret',
-  );
+test('defaults suit a local install', () => {
+  const config = configuration({ HOME: '/home/someone' });
+  assert.equal(config.port, 3775);
+  assert.equal(config.mcpPort, 3776);
+  assert.equal(config.mcpPublicUrl, 'http://host.docker.internal:3776');
+  assert.deepEqual(config.repos, []);
+  assert.equal(config.label, 'factory');
+  assert.equal(config.maxRuns, 2);
+  assert.equal(config.herdrSession, 'factory');
+  assert.match(config.herdrSocket, /\.config\/herdr\/sessions\/factory\/herdr\.sock$/);
+  assert.match(config.home, /\.factory$/);
 });
 
-test('configuration rejects malformed ports, booleans, credentials and endpoints', () => {
-  for (const name of ['SAWD_PORT', 'SAWD_MCP_PORT'])
-    for (const value of ['0', '65536', '1.2', '', ' 3775', '1e3', 'abc'])
-      assert.throws(() => configuration({ ...credentials, [name]: value }), new RegExp(name));
-  assert.throws(() => configuration({ ...credentials, SAWD_PORT: '3776' }), /must differ/);
-  for (const value of ['', '1', 'TRUE', 'yes'])
-    assert.throws(
-      () => configuration({ ...credentials, SAWD_START_DOCKER: value }),
-      /SAWD_START_DOCKER/,
-    );
-  for (const value of ['', 'has space', 'line\nbreak'])
-    assert.throws(() => configuration({ ...credentials, SAWD_API_TOKEN: value }), /SAWD_API_TOKEN/);
-  for (const value of [
-    'not a url',
-    'file:///tmp',
-    'http://user:secret@localhost',
-    'http://localhost/?secret=value',
-    'http://localhost/#token',
-  ])
-    for (const name of ['OPENCODE_URL', 'OPENCODE_PUBLIC_URL'])
-      assert.throws(() => configuration({ ...credentials, [name]: value }), new RegExp(name));
-});
-
-test('browser runtime URL can differ from the private connection URL', () => {
+test('environment values are parsed and validated', () => {
   const config = configuration({
-    ...credentials,
-    OPENCODE_URL: 'http://opencode:3773',
-    OPENCODE_PUBLIC_URL: 'https://runtime.example/opencode/',
+    FACTORY_REPOS: ' acme/widgets, acme/gadgets.js ,',
+    FACTORY_LABEL: 'robot',
+    FACTORY_HOME: '/srv/factory',
+    FACTORY_MAX_RUNS: '4',
+    HERDR_SESSION: 'ci',
+    FACTORY_MCP_PUBLIC_URL: 'http://192.168.5.2:3776/',
+    FACTORY_AGENT_COMMAND: 'node stub.mjs',
   });
-  assert.equal(config.opencodeUrl, 'http://opencode:3773');
-  assert.equal(config.opencodePublicUrl, 'https://runtime.example/opencode');
-});
+  assert.deepEqual(config.repos, ['acme/widgets', 'acme/gadgets.js']);
+  assert.equal(config.mcpPublicUrl, 'http://192.168.5.2:3776');
+  assert.equal(config.agentCommand, 'node stub.mjs');
+  assert.match(config.herdrSocket, /sessions\/ci\/herdr\.sock$/);
 
-test('configuration validates the shared workspace', () => {
-  assert.equal(
-    configuration({ ...credentials, SAWD_WORKSPACE_ROOT: '/tmp/tasks' }).workspaceRoot,
-    '/tmp/tasks',
-  );
-  for (const value of ['', 'relative', '/tmp/line\nbreak'])
-    assert.throws(
-      () => configuration({ ...credentials, SAWD_WORKSPACE_ROOT: value }),
-      /SAWD_WORKSPACE_ROOT/,
-    );
-});
-
-test('configuration requires supplied runtime credentials with the fixed v2 username', () => {
-  assert.throws(() => configuration({}), /OPENCODE_PASSWORD/);
-  const config = configuration({
-    OPENCODE_SERVER_USERNAME: 'opencode',
-    OPENCODE_SERVER_PASSWORD: 'secret:with spaces',
-  });
-  assert.equal('opencodeUsername' in config, false);
-  assert.equal(config.opencodePassword, 'secret:with spaces');
-  for (const name of ['OPENCODE_PASSWORD', 'OPENCODE_SERVER_PASSWORD'])
-    for (const value of ['', 'line\nbreak', 'control\x7f'])
-      assert.throws(() => configuration({ [name]: value }), new RegExp(name));
-  for (const value of ['', 'custom', 'user:name', 'line\nbreak'])
-    assert.throws(
-      () => configuration({ ...credentials, OPENCODE_SERVER_USERNAME: value }),
-      /OPENCODE_SERVER_USERNAME/,
-    );
-});
-
-test('the native password overrides the legacy alias without falling back from an empty value', () => {
-  assert.equal(
-    configuration({ ...credentials, OPENCODE_SERVER_PASSWORD: 'legacy' }).opencodePassword,
-    'test-password',
-  );
-  assert.throws(
-    () => configuration({ OPENCODE_PASSWORD: '', OPENCODE_SERVER_PASSWORD: 'legacy' }),
-    /OPENCODE_PASSWORD/,
-  );
+  for (const [env, message] of [
+    [{ FACTORY_PORT: '0' }, /FACTORY_PORT/],
+    [{ FACTORY_PORT: '4000', FACTORY_MCP_PORT: '4000' }, /must differ/],
+    [{ FACTORY_REPOS: 'not-a-repo' }, /owner\/name/],
+    [{ FACTORY_REPOS: 'acme/widgets;rm -rf' }, /owner\/name/],
+    [{ FACTORY_LABEL: 'has space' }, /FACTORY_LABEL/],
+    [{ FACTORY_HOME: 'relative/path' }, /FACTORY_HOME/],
+    [{ FACTORY_API_TOKEN: 'has space' }, /FACTORY_API_TOKEN/],
+    [{ HERDR_SESSION: '../default' }, /HERDR_SESSION/],
+    [{ FACTORY_MCP_PUBLIC_URL: 'ftp://host' }, /FACTORY_MCP_PUBLIC_URL/],
+    [{ FACTORY_MAX_RUNS: 'two' }, /FACTORY_MAX_RUNS/],
+  ] as const)
+    assert.throws(() => configuration(env), message);
 });

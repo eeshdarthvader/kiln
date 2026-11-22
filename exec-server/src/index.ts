@@ -6,12 +6,12 @@ async function main() {
   try {
     config = configuration();
   } catch (error) {
-    console.error(error instanceof Error ? error.message : 'Invalid SAWD configuration.');
+    console.error(error instanceof Error ? error.message : 'Invalid factory configuration.');
     process.exitCode = 1;
     return;
   }
   await start(config).catch((error: unknown) => {
-    console.error(error instanceof StartupError ? error.message : 'SAWD startup failed.');
+    console.error(error instanceof StartupError ? error.message : 'Factory startup failed.');
     process.exitCode = 1;
   });
 }

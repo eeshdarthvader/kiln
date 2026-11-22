@@ -1,46 +1,72 @@
+import { execFile } from 'node:child_process';
 import { once } from 'node:events';
+import { chmod, mkdir, writeFile } from 'node:fs/promises';
 import type { Server } from 'node:http';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { join } from 'node:path';
+import { promisify } from 'node:util';
 import { applications } from './app.ts';
 import { configuration, type Config } from './config.ts';
 import { Core } from './core.ts';
-import { profiles, type Capability } from './domain.ts';
-import { OpenCodeClient } from './opencode/client.ts';
-import { TaskInitializer } from './setup.ts';
-import { RuntimeCommandError } from './ports.ts';
+import { GhCli } from './github/gh.ts';
+import { GitRepository } from './github/git.ts';
+import { Intake } from './github/intake.ts';
+import { HerdrClient } from './herdr/client.ts';
+import { HerdrRuntime } from './herdr/runtime.ts';
+import { Pipeline } from './pipeline.ts';
+import { FileRunStore } from './store.ts';
 
 export class StartupError extends Error {}
 
-export async function probeReporting(url: string): Promise<void> {
-  const client = new Client({ name: 'sawd-bootstrap', version: '0.1.0' });
-  try {
-    await client.connect(new StreamableHTTPClientTransport(new URL(url)), { timeout: 10_000 });
-    const result = await client.listTools({}, { timeout: 10_000 });
-    if (!result.tools.some((tool) => tool.name === 'get_reporting_instructions'))
-      throw new Error('Reporting tool get_reporting_instructions is unavailable.');
-    const instructions = await client.callTool(
-      { name: 'get_reporting_instructions', arguments: {} },
-      undefined,
-      { timeout: 10_000 },
-    );
-    if (instructions.isError) throw new Error('Reporting instructions probe failed.');
-  } finally {
-    await client.close();
+/**
+ * Writes the credentials file handed to agent containers with `--env-file`. Values come only
+ * from this process's environment (or `gh auth token`), and the file is readable by its owner.
+ */
+export async function writeAgentEnvironment(
+  config: Config,
+  env: NodeJS.ProcessEnv,
+): Promise<string[]> {
+  const values: Record<string, string> = {};
+  for (const name of ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY', 'GH_TOKEN'])
+    if (env[name]) values[name] = env[name];
+  if (!values.GH_TOKEN) {
+    try {
+      const { stdout } = await promisify(execFile)('gh', ['auth', 'token']);
+      if (stdout.trim()) values.GH_TOKEN = stdout.trim();
+    } catch {
+      // Reported below as a missing credential.
+    }
   }
+  const path = join(config.home, 'agent.env');
+  await writeFile(
+    path,
+    Object.entries(values)
+      .map(([name, value]) => `${name}=${value}\n`)
+      .join(''),
+    {
+      mode: 0o600,
+    },
+  );
+  await chmod(path, 0o600);
+  const missing: string[] = [];
+  if (!values.GH_TOKEN) missing.push('GH_TOKEN (or a `gh auth login` session)');
+  if (!values.CLAUDE_CODE_OAUTH_TOKEN && !values.ANTHROPIC_API_KEY)
+    missing.push('CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) or ANTHROPIC_API_KEY');
+  return missing;
 }
 
 export async function start(config: Config = configuration()): Promise<() => Promise<void>> {
-  const startup = new AbortController();
-  let runtime: OpenCodeClient | undefined;
   const servers: Server[] = [];
   let ready = false;
-  let stage = 'connecting to opencode and discovering models';
+  let stage = 'preparing the factory home';
   let closing: Promise<void> | undefined;
+  let runtime: HerdrRuntime | undefined;
+  let pipeline: Pipeline | undefined;
+  let intake: Intake | undefined;
   const close = () => {
-    startup.abort();
     closing ??= (async () => {
       ready = false;
+      intake?.stop();
+      pipeline?.stop();
       runtime?.close();
       await Promise.all(
         servers.map(
@@ -56,67 +82,63 @@ export async function start(config: Config = configuration()): Promise<() => Pro
     })();
     return closing;
   };
-  const shutdown = () => {
-    void close();
-  };
+  const shutdown = () => void close();
   process.once('SIGTERM', shutdown);
   process.once('SIGINT', shutdown);
   try {
-    runtime = new OpenCodeClient({
-      url: config.opencodeUrl,
-      password: config.opencodePassword,
-      workspaceRoot: config.workspaceRoot,
+    await mkdir(config.home, { recursive: true, mode: 0o700 });
+    const missing = config.agentCommand ? [] : await writeAgentEnvironment(config, process.env);
+    for (const item of missing) console.warn(`Agents will not be able to work without ${item}.`);
+
+    stage = `connecting to the Herdr session "${config.herdrSession}" at ${config.herdrSocket}`;
+    runtime = new HerdrRuntime(new HerdrClient(config.herdrSocket), config);
+    await runtime.connect();
+
+    stage = 'loading runs';
+    const core = new Core(new FileRunStore(join(config.home, 'runs')));
+    const github = new GhCli(join(config.home, 'repos'));
+    pipeline = new Pipeline(core, runtime, github, config, { repository: new GitRepository() });
+    const engine = pipeline;
+    intake = new Intake(core, github, config, (issue) => engine.submit(issue));
+    const poller = intake;
+    const apps = applications({
+      core,
+      config,
+      ready: () => ready,
+      issue: (repo, number) => github.issue(repo, number),
+      submit: (issue) => engine.submit(issue),
+      retry: (runId) => engine.retry(runId),
+      cancel: (runId) => engine.cancel(runId),
+      approve: (runId) => engine.approve(runId),
+      reject: (runId, feedback) => engine.reject(runId, feedback),
+      tail: (runId) => engine.tail(runId),
+      poll: () => poller.poll(),
+      intake: () => ({ lastPollAt: poller.lastPollAt, lastError: poller.lastError }),
     });
-    const discovery = await runtime.discover();
-    startup.signal.throwIfAborted();
-    const capabilities: Capability[] = ['git', 'node', 'python'];
-    if (config.startDocker) capabilities.push('docker');
-    const supported = profiles(discovery.providers, discovery.taskWorkspaceRoot, capabilities);
-    if (!supported.length)
-      throw new StartupError('opencode has no available models supporting tool execution.');
-    const core = new Core(supported);
-    const initializer = new TaskInitializer(
-      core,
-      runtime,
-      config.opencodePublicUrl ?? config.opencodeUrl,
-    );
-    const apps = applications(
-      core,
-      () => ready,
-      config.apiToken,
-      undefined,
-      (taskId) => initializer.start(taskId),
-      {
-        url: config.opencodePublicUrl ?? config.opencodeUrl,
-        password: config.opencodePassword,
-      },
-    );
-    stage = `binding the reporting listener to 127.0.0.1:${config.mcpPort}`;
-    const reporting = apps.mcp.listen(config.mcpPort, '127.0.0.1');
+
+    stage = `binding the reporting listener to ${config.mcpHost}:${config.mcpPort}`;
+    const reporting = apps.mcp.listen(config.mcpPort, config.mcpHost);
     servers.push(reporting);
-    await once(reporting, 'listening', { signal: startup.signal });
-    startup.signal.throwIfAborted();
-    stage = 'registering reporting tools with opencode';
-    await runtime.registerReporting(`http://127.0.0.1:${config.mcpPort}/mcp`);
-    startup.signal.throwIfAborted();
-    stage = 'probing reporting tool discovery';
-    await probeReporting(`http://127.0.0.1:${config.mcpPort}/mcp`);
-    startup.signal.throwIfAborted();
-    stage = `binding the HTTP listener to 0.0.0.0:${config.port}`;
-    const http = apps.app.listen(config.port, '0.0.0.0');
+    await once(reporting, 'listening');
+
+    stage = `binding the HTTP listener to 127.0.0.1:${config.port}`;
+    const http = apps.app.listen(config.port, '127.0.0.1');
     servers.push(http);
-    await once(http, 'listening', { signal: startup.signal });
-    startup.signal.throwIfAborted();
+    await once(http, 'listening');
+
     ready = true;
-    console.log(`SAWD listening on 0.0.0.0:${config.port}`);
+    stage = 'resuming runs';
+    await pipeline.start();
+    intake.start();
+    console.log(`Factory dashboard: http://127.0.0.1:${config.port}`);
+    console.log(
+      config.repos.length
+        ? `Watching ${config.repos.join(', ')} for the "${config.label}" label every ${config.pollSeconds}s.`
+        : 'No repositories are watched (FACTORY_REPOS is empty); add issues from the dashboard.',
+    );
     return close;
   } catch (error) {
-    const interrupted = startup.signal.aborted;
     await close();
-    if (interrupted) return close;
-    if (error instanceof StartupError) throw error;
-    if (error instanceof RuntimeCommandError)
-      throw new StartupError(`SAWD startup failed while ${stage}: ${error.message}`);
-    throw new StartupError(`SAWD startup failed while ${stage}.`);
+    throw new StartupError(`Factory startup failed while ${stage}: ${(error as Error).message}`);
   }
 }

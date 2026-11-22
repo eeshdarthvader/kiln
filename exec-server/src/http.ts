@@ -1,8 +1,8 @@
 import type { ErrorRequestHandler } from 'express';
-import { SawdError } from './domain.ts';
+import { FactoryError } from './domain.ts';
 
 export function errorEnvelope(error: unknown, message = 'Unable to process this request.') {
-  if (error instanceof SawdError)
+  if (error instanceof FactoryError)
     return {
       error: {
         code: error.code,
@@ -15,7 +15,7 @@ export function errorEnvelope(error: unknown, message = 'Unable to process this 
 
 export const handleError: ErrorRequestHandler = (error: unknown, _req, res, _next) => {
   if (res.headersSent) return;
-  if (error instanceof SawdError) {
+  if (error instanceof FactoryError) {
     res.status(error.status).json(errorEnvelope(error));
     return;
   }

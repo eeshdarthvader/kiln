@@ -1,12 +1,12 @@
 import { timingSafeEqual } from 'node:crypto';
 import express from 'express';
+import type { Config } from './config.ts';
 import type { Core } from './core.ts';
-import { SawdError, type Task } from './domain.ts';
+import { FactoryError, type Issue, type Run, type StageName } from './domain.ts';
 import { handleError } from './http.ts';
 import { handleMcp } from './mcp.ts';
-import { openApiDocument } from './openapi.ts';
 import { mountUi } from './ui.ts';
-import type { OpenCodeConnection } from './shared/types.ts';
+import { newRunSchema, parse, parseIssueUrl, rejectSchema } from './validation.ts';
 
 function authorized(actual: string | undefined, token: string): boolean {
   const expected = Buffer.from(`Bearer ${token}`);
@@ -14,14 +14,24 @@ function authorized(actual: string | undefined, token: string): boolean {
   return expected.length === received.length && timingSafeEqual(expected, received);
 }
 
-export function applications(
-  core: Core,
-  ready: () => boolean,
-  apiToken?: string,
-  uiDirectory?: string,
-  startTask?: (id: string) => Promise<Task>,
-  opencodeConnection?: OpenCodeConnection,
-) {
+/** What the HTTP layer needs from the rest of the factory. */
+export interface Services {
+  core: Core;
+  config: Config;
+  ready: () => boolean;
+  issue(repo: string, number: number): Promise<Issue>;
+  submit(issue: Issue): Promise<Run>;
+  retry(runId: string): Promise<Run>;
+  cancel(runId: string): Promise<Run>;
+  approve(runId: string): Promise<Run>;
+  reject(runId: string, feedback: string): Promise<Run>;
+  tail(runId: string): Promise<{ stage: StageName | null; text: string }>;
+  poll(): Promise<Run[]>;
+  intake(): { lastPollAt: string | null; lastError: string | null };
+}
+
+export function applications(services: Services, uiDirectory?: string) {
+  const { core, config, ready } = services;
   const app = express();
   app.disable('x-powered-by');
   mountUi(app, uiDirectory);
@@ -30,41 +40,74 @@ export function applications(
     const available = ready();
     res.status(available ? 200 : 503).json({ ready: available });
   });
-  app.use((req, res, next) => {
-    if (apiToken !== undefined && !authorized(req.get('authorization'), apiToken)) {
-      next(new SawdError('A valid bearer token is required.', 401, 'UNAUTHORIZED'));
+  app.use((req, _res, next) => {
+    if (config.apiToken !== undefined && !authorized(req.get('authorization'), config.apiToken)) {
+      next(new FactoryError('A valid bearer token is required.', 401, 'UNAUTHORIZED'));
       return;
     }
     if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && !ready()) {
-      next(new SawdError('SAWD is not ready.', 503, 'NOT_READY'));
+      next(new FactoryError('The factory is not ready.', 503, 'NOT_READY'));
       return;
     }
     next();
   });
   app.use(express.json({ limit: '1mb' }));
-  app.get('/v1/openapi.json', (_req, res) => res.json(openApiDocument));
-  app.get('/v1/agents', (_req, res) => res.json({ schemaVersion: 1, agents: core.listAgents() }));
-  app.get('/v1/opencode/connection', (_req, res) => {
-    res.set('Cache-Control', 'no-store');
-    if (!opencodeConnection)
-      throw new SawdError('OpenCode login details are unavailable.', 503, 'NOT_READY');
-    res.json(opencodeConnection);
+
+  app.get('/v1/factory', (_req, res) =>
+    res.json({
+      repos: config.repos,
+      label: config.label,
+      autonomy: config.autonomy,
+      pollSeconds: config.pollSeconds,
+      maxRuns: config.maxRuns,
+      herdrSession: config.herdrSession,
+      ...services.intake(),
+    }),
+  );
+  app.post('/v1/poll', async (_req, res) => res.json({ started: await services.poll() }));
+  app.get('/v1/runs', (_req, res) => res.json({ runs: core.list() }));
+  app.post('/v1/runs', async (req, res) => {
+    const { repo, number } = parseIssueUrl(parse(newRunSchema, req.body).issueUrl);
+    res.status(202).json(await services.submit(await services.issue(repo, number)));
   });
-  app.put('/v1/tasks/:id', (req, res) => {
-    const result = core.accept(req.params.id, req.body);
-    res.status(result.created ? 201 : 200).json(result.task);
-  });
-  app.get('/v1/tasks', (_req, res) => res.json({ tasks: core.list() }));
-  app.get('/v1/tasks/:id', (req, res) => {
+  app.get('/v1/runs/:id', (req, res) => {
     res.set('Cache-Control', 'no-store').json(core.get(req.params.id));
   });
-  app.post('/v1/tasks/:id/start', async (req, res) => {
-    core.record(req.params.id);
-    if (!startTask) throw new SawdError('Task setup is unavailable.', 503, 'NOT_READY');
-    res.json(await startTask(req.params.id));
+  app.get('/v1/runs/:id/tail', async (req, res) => {
+    res.set('Cache-Control', 'no-store').json(await services.tail(req.params.id));
   });
-  app.post('/v1/tasks/:id/archive', (req, res) => res.json(core.archive(req.params.id)));
-  app.use((_req, _res, next) => next(new SawdError('Route not found.', 404, 'ROUTE_NOT_FOUND')));
+  app.post('/v1/runs/:id/retry', async (req, res) => res.json(await services.retry(req.params.id)));
+  app.post('/v1/runs/:id/cancel', async (req, res) =>
+    res.json(await services.cancel(req.params.id)),
+  );
+  app.post('/v1/runs/:id/approve', async (req, res) =>
+    res.json(await services.approve(req.params.id)),
+  );
+  app.post('/v1/runs/:id/reject', async (req, res) =>
+    res.json(await services.reject(req.params.id, parse(rejectSchema, req.body).feedback)),
+  );
+  // Server-sent events: one `run` event per change, so the dashboard never has to poll.
+  app.get('/v1/events', (req, res) => {
+    res.set({
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-store',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    res.flushHeaders();
+    res.write(': connected\n\n');
+    const send = (run: Run) => {
+      const { plan: _plan, attachments: _attachments, ...summary } = run;
+      res.write(`event: run\ndata: ${JSON.stringify(summary)}\n\n`);
+    };
+    const heartbeat = setInterval(() => res.write(': ping\n\n'), 20_000);
+    core.on('change', send);
+    req.once('close', () => {
+      clearInterval(heartbeat);
+      core.off('change', send);
+    });
+  });
+  app.use((_req, _res, next) => next(new FactoryError('Route not found.', 404, 'ROUTE_NOT_FOUND')));
   app.use(handleError);
 
   const mcp = express();
@@ -73,20 +116,19 @@ export function applications(
   mcp.post('/mcp', (req, res, next) => {
     void handleMcp(core, req, res, ready).catch(next);
   });
-  mcp.post('/mcp/tasks/:taskId', (req, res, next) => {
-    void handleMcp(core, req, res, ready, req.params.taskId).catch(next);
+  mcp.post('/mcp/runs/:runId/stages/:stage', (req, res, next) => {
+    void handleMcp(core, req, res, ready, {
+      runId: req.params.runId,
+      stage: req.params.stage,
+    }).catch(next);
   });
-  mcp.all(['/mcp', '/mcp/tasks/:taskId'], (_req, res) => {
+  mcp.all(['/mcp', '/mcp/runs/:runId/stages/:stage'], (_req, res) => {
     res
       .set('Allow', 'POST')
       .status(405)
-      .json({
-        jsonrpc: '2.0',
-        id: null,
-        error: { code: -32000, message: 'Method not allowed.' },
-      });
+      .json({ jsonrpc: '2.0', id: null, error: { code: -32000, message: 'Method not allowed.' } });
   });
-  mcp.use((_req, _res, next) => next(new SawdError('Route not found.', 404, 'ROUTE_NOT_FOUND')));
+  mcp.use((_req, _res, next) => next(new FactoryError('Route not found.', 404, 'ROUTE_NOT_FOUND')));
   mcp.use(handleError);
   return { app, mcp };
 }
