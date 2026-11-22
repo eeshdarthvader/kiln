@@ -1,2 +1,5 @@
 [credential "https://github.com"]
 	helper = !gh auth git-credential
+# The worktree and its repository are bind mounts owned by the host user.
+[safe]
+	directory = *

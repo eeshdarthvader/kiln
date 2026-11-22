@@ -1,74 +1,124 @@
-import { isAbsolute } from 'node:path';
+import { homedir } from 'node:os';
+import { isAbsolute, join } from 'node:path';
+import { autonomyLevels, type Autonomy } from './domain.ts';
 
 export interface Config {
   port: number;
   mcpPort: number;
-  opencodeUrl: string;
-  opencodePublicUrl?: string;
-  opencodePassword: string;
-  workspaceRoot: string;
-  startDocker: boolean;
+  /** Address the reporting MCP listener binds to. Containers reach it through `mcpPublicUrl`. */
+  mcpHost: string;
+  mcpPublicUrl: string;
   apiToken?: string;
+  /** Holds run records, repository clones, worktrees and per-run agent files. */
+  home: string;
+  repos: string[];
+  label: string;
+  /** Autonomy for repositories without a `.factory/policy.json`. */
+  autonomy: Autonomy;
+  pollSeconds: number;
+  maxRuns: number;
+  maxStageAttempts: number;
+  stageTimeoutMinutes: number;
+  herdrSession: string;
+  herdrSocket: string;
+  agentImage: string;
+  /** Extra `docker run` arguments for agent containers. */
+  agentDockerArgs?: string;
+  /** Test hook: run this host command in the pane instead of the agent container. */
+  agentCommand?: string;
+  agentModel?: string;
 }
 
-function endpoint(value: string, name = 'OPENCODE_URL'): string {
+function integer(
+  value: string | undefined,
+  fallback: number,
+  name: string,
+  min: number,
+  max: number,
+) {
+  if (value !== undefined && !/^\d+$/.test(value))
+    throw new Error(`${name} must be an integer from ${min} to ${max}.`);
+  const parsed = value === undefined ? fallback : Number(value);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max)
+    throw new Error(`${name} must be an integer from ${min} to ${max}.`);
+  return parsed;
+}
+
+function httpUrl(value: string, name: string): string {
   let url: URL;
   try {
     url = new URL(value);
   } catch {
-    throw new Error(`${name} must be an HTTP(S) URL without credentials, query or fragment.`);
+    throw new Error(`${name} must be an HTTP(S) URL.`);
   }
-  if (
-    !['http:', 'https:'].includes(url.protocol) ||
-    url.username ||
-    url.password ||
-    url.search ||
-    url.hash
-  )
-    throw new Error(`${name} must be an HTTP(S) URL without credentials, query or fragment.`);
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password)
+    throw new Error(`${name} must be an HTTP(S) URL without credentials.`);
   return value.replace(/\/$/, '');
 }
 
-function port(value: string | undefined, fallback: number, name: string): number {
-  if (value !== undefined && !/^\d+$/.test(value))
-    throw new Error(`${name} must be an integer from 1 to 65535.`);
-  const parsed = value === undefined ? fallback : Number(value);
-  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535)
-    throw new Error(`${name} must be an integer from 1 to 65535.`);
-  return parsed;
-}
-
 export function configuration(env: NodeJS.ProcessEnv = process.env): Config {
-  const apiPort = port(env.SAWD_PORT, 3775, 'SAWD_PORT');
-  const mcpPort = port(env.SAWD_MCP_PORT, 3776, 'SAWD_MCP_PORT');
-  if (apiPort === mcpPort) throw new Error('SAWD_PORT and SAWD_MCP_PORT must differ.');
-  if (env.SAWD_START_DOCKER !== undefined && !['true', 'false'].includes(env.SAWD_START_DOCKER))
-    throw new Error('SAWD_START_DOCKER must be true or false.');
-  const apiToken = env.SAWD_API_TOKEN;
+  const port = integer(env.FACTORY_PORT, 3775, 'FACTORY_PORT', 1, 65535);
+  const mcpPort = integer(env.FACTORY_MCP_PORT, 3776, 'FACTORY_MCP_PORT', 1, 65535);
+  if (port === mcpPort) throw new Error('FACTORY_PORT and FACTORY_MCP_PORT must differ.');
+  const apiToken = env.FACTORY_API_TOKEN;
   if (apiToken !== undefined && (!apiToken || /\s/.test(apiToken) || apiToken.length > 8192))
-    throw new Error('SAWD_API_TOKEN must be a nonempty token without whitespace.');
-  const workspaceRoot = env.SAWD_WORKSPACE_ROOT ?? '/workspace/sawd';
-  if (!isAbsolute(workspaceRoot) || /[\x00-\x1f]/.test(workspaceRoot))
-    throw new Error('SAWD_WORKSPACE_ROOT must be an absolute directory path.');
-  const opencodePassword = env.OPENCODE_PASSWORD ?? env.OPENCODE_SERVER_PASSWORD;
-  if (!opencodePassword || /[\x00-\x1f\x7f]/.test(opencodePassword))
-    throw new Error(
-      'OPENCODE_PASSWORD (or legacy OPENCODE_SERVER_PASSWORD) must be nonempty and contain no control characters.',
-    );
-  if (env.OPENCODE_SERVER_USERNAME !== undefined && env.OPENCODE_SERVER_USERNAME !== 'opencode')
-    throw new Error(
-      'OpenCode v2 requires username opencode; remove OPENCODE_SERVER_USERNAME or set it to opencode.',
-    );
+    throw new Error('FACTORY_API_TOKEN must be a nonempty token without whitespace.');
+  const home = env.FACTORY_HOME ?? join(homedir(), '.factory');
+  if (!isAbsolute(home) || /[\x00-\x1f]/.test(home))
+    throw new Error('FACTORY_HOME must be an absolute directory path.');
+  const repos = (env.FACTORY_REPOS ?? '')
+    .split(',')
+    .map((repo) => repo.trim())
+    .filter(Boolean);
+  for (const repo of repos)
+    if (!/^[\w.-]+\/[\w.-]+$/.test(repo))
+      throw new Error(`FACTORY_REPOS entry "${repo}" must use the owner/name form.`);
+  const label = env.FACTORY_LABEL ?? 'factory';
+  if (!/^[\w.-]{1,40}$/.test(label))
+    throw new Error('FACTORY_LABEL must be 1-40 letters, digits, dots, dashes or underscores.');
+  const autonomy = env.FACTORY_AUTONOMY ?? 'L1';
+  if (!(autonomyLevels as readonly string[]).includes(autonomy))
+    throw new Error('FACTORY_AUTONOMY must be L0, L1, L2 or L3.');
+  const herdrSession = env.HERDR_SESSION ?? 'factory';
+  if (!/^[\w-]{1,64}$/.test(herdrSession))
+    throw new Error('HERDR_SESSION must be 1-64 letters, digits, dashes or underscores.');
+  const herdrSocket =
+    env.HERDR_SOCKET_PATH ??
+    join(homedir(), '.config', 'herdr', 'sessions', herdrSession, 'herdr.sock');
   return {
-    port: apiPort,
+    port,
     mcpPort,
-    opencodeUrl: endpoint(env.OPENCODE_URL ?? 'http://127.0.0.1:3773'),
-    ...(env.OPENCODE_PUBLIC_URL === undefined
-      ? {}
-      : { opencodePublicUrl: endpoint(env.OPENCODE_PUBLIC_URL, 'OPENCODE_PUBLIC_URL') }),
-    opencodePassword,
-    workspaceRoot,
-    startDocker: env.SAWD_START_DOCKER === 'true',
+    mcpHost: env.FACTORY_MCP_HOST ?? '127.0.0.1',
+    mcpPublicUrl: httpUrl(
+      env.FACTORY_MCP_PUBLIC_URL ?? `http://host.docker.internal:${mcpPort}`,
+      'FACTORY_MCP_PUBLIC_URL',
+    ),
     ...(apiToken === undefined ? {} : { apiToken }),
+    home,
+    repos,
+    label,
+    autonomy: autonomy as Autonomy,
+    pollSeconds: integer(env.FACTORY_POLL_SECONDS, 60, 'FACTORY_POLL_SECONDS', 0, 86_400),
+    maxRuns: integer(env.FACTORY_MAX_RUNS, 2, 'FACTORY_MAX_RUNS', 1, 16),
+    maxStageAttempts: integer(
+      env.FACTORY_MAX_STAGE_ATTEMPTS,
+      3,
+      'FACTORY_MAX_STAGE_ATTEMPTS',
+      1,
+      10,
+    ),
+    stageTimeoutMinutes: integer(
+      env.FACTORY_STAGE_TIMEOUT_MINUTES,
+      45,
+      'FACTORY_STAGE_TIMEOUT_MINUTES',
+      1,
+      1440,
+    ),
+    herdrSession,
+    herdrSocket,
+    agentImage: env.FACTORY_AGENT_IMAGE ?? 'localhost/factory-agent:latest',
+    ...(env.FACTORY_AGENT_DOCKER_ARGS ? { agentDockerArgs: env.FACTORY_AGENT_DOCKER_ARGS } : {}),
+    ...(env.FACTORY_AGENT_COMMAND ? { agentCommand: env.FACTORY_AGENT_COMMAND } : {}),
+    ...(env.FACTORY_AGENT_MODEL ? { agentModel: env.FACTORY_AGENT_MODEL } : {}),
   };
 }

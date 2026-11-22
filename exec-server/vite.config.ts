@@ -1,7 +1,7 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
-const backendPort = process.env.SAWD_PORT ?? '3775';
+const backendPort = process.env.FACTORY_PORT ?? '3775';
 const backend = `http://127.0.0.1:${backendPort}`;
 
 export default defineConfig({

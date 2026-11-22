@@ -1,342 +1,192 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { test, type TestContext } from 'node:test';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { applications } from './app.ts';
+import type { Config } from './config.ts';
 import { Core } from './core.ts';
-import { SawdError, type Task } from './domain.ts';
-import { openApiDocument } from './openapi.ts';
-import type { OpenCodeConnection } from './shared/types.ts';
+import { Pipeline } from './pipeline.ts';
+import { MemoryRunStore } from './store.ts';
+import { FakeGitHub, FakeRuntime, eventually, issue, testConfig } from './testing.ts';
 
-const submission = {
-  title: 'Implement task',
-  input: { instructions: 'Implement the task.' },
-  acceptanceCriteria: ['Works'],
-  labels: [],
-  executor: 'agent',
-};
-
-async function fixture(
-  t: TestContext,
-  apiToken?: string,
-  startTask?: (id: string) => Promise<Task>,
-  opencodeConnection?: OpenCodeConnection,
-) {
-  const core = new Core([
-    {
-      id: 'agent',
-      name: 'Agent',
-      description: 'Test',
-      capabilities: ['git'],
-      provider: 'opencode',
-      instanceId: 'instance',
-      model: 'model',
-      workspaceRoot: '/tmp/sawd',
-    },
-  ]);
+async function serve(t: TestContext, overrides: Partial<Config> = {}) {
+  const config = testConfig(overrides);
+  const core = new Core(new MemoryRunStore());
+  const runtime = new FakeRuntime(config.home);
+  const github = new FakeGitHub();
+  const pipeline = new Pipeline(core, runtime, github, config, { exitGraceMs: 10, stopDelayMs: 0 });
   let ready = true;
-  const server = applications(
+  const apps = applications({
     core,
-    () => ready,
-    apiToken,
-    undefined,
-    startTask ?? (async (id) => core.start(id)),
-    opencodeConnection,
-  ).app.listen(0, '127.0.0.1');
-  await once(server, 'listening');
-  t.after(() => {
-    server.closeAllConnections();
-    server.close();
+    config,
+    ready: () => ready,
+    issue: (repo, number) => github.issue(repo, number),
+    submit: (value) => pipeline.submit(value),
+    retry: (id) => pipeline.retry(id),
+    cancel: (id) => pipeline.cancel(id),
+    approve: (id) => pipeline.approve(id),
+    reject: (id, feedback) => pipeline.reject(id, feedback),
+    tail: (id) => pipeline.tail(id),
+    poll: async () => [],
+    intake: () => ({ lastPollAt: null, lastError: null }),
   });
-  const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-  const request = (path: string, method = 'GET', body?: unknown) =>
-    fetch(`${base}${path}`, {
-      method,
+  await pipeline.start();
+  const listen = async (application: typeof apps.app) => {
+    const server = application.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    t.after(() => {
+      server.closeAllConnections();
+      server.close();
+    });
+    return `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  };
+  t.after(() => pipeline.stop());
+  const api = await listen(apps.app);
+  const mcp = await listen(apps.mcp);
+  const request = (path: string, init: RequestInit & { token?: string } = {}) =>
+    fetch(`${api}${path}`, {
+      ...init,
       headers: {
         'content-type': 'application/json',
-        ...(apiToken ? { authorization: `Bearer ${apiToken}` } : {}),
+        ...(init.token ? { authorization: `Bearer ${init.token}` } : {}),
       },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
   return {
     core,
-    base,
+    runtime,
+    github,
+    api,
+    mcp,
     request,
-    setReady: (value: boolean) => {
-      ready = value;
-    },
+    setReady: (value: boolean) => (ready = value),
   };
 }
 
-test('REST discovery and idempotent acceptance publish only public task data', async (t) => {
-  const { core, request } = await fixture(t);
-  const agents = await (await request('/v1/agents')).json();
-  assert.deepEqual(agents, {
-    schemaVersion: 1,
-    agents: [{ id: 'agent', name: 'Agent', description: 'Test', capabilities: ['git'] }],
+async function tools(t: TestContext, url: string) {
+  const client = new Client({ name: 'test-agent', version: '0.0.0' });
+  await client.connect(new StreamableHTTPClientTransport(new URL(url)));
+  t.after(() => client.close());
+  const call = async (name: string, args: Record<string, unknown>) => {
+    const result = await client.callTool({ name, arguments: args });
+    const [content] = result.content as Array<{ text: string }>;
+    return {
+      isError: result.isError === true,
+      body: name === 'get_reporting_instructions' ? content!.text : JSON.parse(content!.text),
+    };
+  };
+  return { client, call };
+}
+
+test('adding an issue URL starts a run that an agent advances through the reporting MCP', async (t) => {
+  const { core, runtime, github, mcp, request } = await serve(t);
+  github.add(issue());
+  const created = await request('/v1/runs', {
+    method: 'POST',
+    body: JSON.stringify({ issueUrl: 'https://github.com/acme/widgets/issues/7' }),
   });
-  const accepted = await request('/v1/tasks/task', 'PUT', submission);
-  assert.equal(accepted.status, 201);
-  const task = await accepted.json();
-  assert.equal(task.id, 'task');
-  assert.equal(task.title, submission.title);
-  assert.deepEqual(task.setup, { status: 'pending' });
-  assert.equal(task.report, null);
-  assert.deepEqual(task.input, submission.input);
-  for (const key of [
-    'initialInstructions',
-    'followUps',
-    'interactions',
-    'inputRequests',
-    'autonomy',
-    'initiator',
-  ])
-    assert.equal(key in task, false);
-  const retry = await request('/v1/tasks/task', 'PUT', submission);
-  assert.equal(retry.status, 200);
-  assert.deepEqual(await retry.json(), task);
-  assert.equal(
-    (
-      await request('/v1/tasks/task', 'PUT', {
-        ...submission,
-        input: { instructions: 'Different' },
-      })
-    ).status,
-    409,
+  assert.equal(created.status, 202);
+  const run = (await created.json()) as { id: string };
+  await eventually(() => assert.equal(runtime.started.length, 1));
+
+  const agent = await tools(t, `${mcp}/mcp/runs/${run.id}/stages/classify`);
+  assert.deepEqual((await agent.client.listTools()).tools.map((tool) => tool.name).sort(), [
+    'create_attachment',
+    'get_reporting_instructions',
+    'report_status',
+  ]);
+  assert.match((await agent.call('get_reporting_instructions', {})).body, /report_status/);
+  const reported = await agent.call('report_status', {
+    operationId: 'op-1',
+    report: { status: 'done', summary: 'Ready to build.' },
+  });
+  assert.equal(reported.isError, false);
+  assert.equal(reported.body.stage, 'classify');
+  await eventually(() => assert.equal(runtime.last.stage, 'plan'));
+
+  const stale = await agent.call('report_status', {
+    operationId: 'op-2',
+    report: { status: 'done', summary: 'Again.' },
+  });
+  assert.equal(stale.isError, true);
+  assert.equal(stale.body.error.code, 'RUN_STATE_CONFLICT');
+
+  const detail = (await (await request(`/v1/runs/${run.id}`)).json()) as {
+    stages: unknown[];
+    status: string;
+  };
+  assert.equal(detail.status, 'running');
+  assert.equal(detail.stages.length, 2);
+  const tail = (await (await request(`/v1/runs/${run.id}/tail`)).json()) as {
+    stage: string;
+    text: string;
+  };
+  assert.deepEqual(tail, { stage: 'plan', text: `output of ${runtime.last.paneId}` });
+  const cancelled = (await (
+    await request(`/v1/runs/${run.id}/cancel`, { method: 'POST' })
+  ).json()) as { status: string };
+  assert.equal(cancelled.status, 'cancelled');
+  assert.equal(core.list().length, 1);
+});
+
+test('the reporting MCP exposes write tools only on a stage URL of an existing run', async (t) => {
+  const { mcp } = await serve(t);
+  const general = await tools(t, `${mcp}/mcp`);
+  assert.deepEqual(
+    (await general.client.listTools()).tools.map((tool) => tool.name),
+    ['get_reporting_instructions'],
   );
-  assert.deepEqual(await (await request('/v1/tasks')).json(), { tasks: core.list() });
-  assert.deepEqual(await (await request('/v1/tasks/task')).json(), task);
-  assert.equal('workspacePath' in task, false);
-  assert.equal('threadId' in task, false);
-  assert.equal((await request('/v1/tasks/missing')).status, 404);
-});
-
-test('runtime URL is available in authorized task detail after session creation', async (t) => {
-  const { core, base, request } = await fixture(t, 'test-secret');
-  await request('/v1/tasks/task', 'PUT', submission);
-  assert.equal((await fetch(`${base}/v1/tasks/task`)).status, 401);
-  const pending = await request('/v1/tasks/task');
-  assert.equal(pending.headers.get('cache-control'), 'no-store');
-  assert.equal((await pending.json()).runtimeUrl, null);
-  const url = 'https://runtime.example/workspace/session/ses_test';
-  core.setSetup('task', { status: 'submitted' }, url);
-  assert.equal((await (await request('/v1/tasks/task')).json()).runtimeUrl, url);
-  await request('/v1/tasks/other', 'PUT', submission);
-  assert.equal((await (await request('/v1/tasks/other')).json()).runtimeUrl, null);
-  assert.equal((await request('/v1/tasks/task/runtime-link')).status, 404);
-});
-
-test('REST submissions reject missing or invalid titles before accepting a task', async (t) => {
-  const { request } = await fixture(t);
-  const { title, ...untitled } = submission;
-  for (const payload of [
-    untitled,
-    ...['', '   ', 'x'.repeat(201), null, 42].map((title) => ({ ...submission, title })),
-  ]) {
-    const response = await request('/v1/tasks/task', 'PUT', payload);
-    assert.equal(response.status, 400);
-    assert.match((await response.json()).error.message, /^title:/);
-  }
-  assert.deepEqual(await (await request('/v1/tasks')).json(), { tasks: [] });
-  const accepted = await request('/v1/tasks/task', 'PUT', { ...submission, title: `  ${title}  ` });
-  assert.equal(accepted.status, 201);
-  assert.equal((await accepted.json()).title, title);
-  assert.equal((await request('/v1/tasks/task', 'PUT', submission)).status, 200);
-  assert.equal(
-    (await request('/v1/tasks/task', 'PUT', { ...submission, title: 'Changed title' })).status,
-    409,
-  );
-});
-
-test('OpenCode login details require API access and are never cached or included in tasks', async (t) => {
-  const connection = { url: 'https://runtime.example/opencode', password: 'test-runtime-secret' };
-  const { base, request } = await fixture(t, 'test-api-secret', undefined, connection);
-  for (const authorization of ['', 'Bearer wrong']) {
-    const denied = await fetch(`${base}/v1/opencode/connection`, { headers: { authorization } });
-    assert.equal(denied.status, 401);
-    assert.equal((await denied.text()).includes(connection.password), false);
-  }
-  const response = await request('/v1/opencode/connection');
-  assert.equal(response.status, 200);
-  assert.equal(response.headers.get('cache-control'), 'no-store');
-  assert.equal(response.headers.get('access-control-allow-origin'), null);
-  assert.deepEqual(await response.json(), connection);
-  await request('/v1/tasks/task', 'PUT', submission);
-  for (const path of ['/v1/tasks', '/v1/tasks/task', '/v1/agents', '/v1/openapi.json'])
-    assert.equal((await (await request(path)).text()).includes(connection.password), false);
-  const local = await fixture(t, undefined, undefined, connection);
-  assert.deepEqual(await (await local.request('/v1/opencode/connection')).json(), connection);
-  const unavailable = await fixture(t);
-  const missing = await unavailable.request('/v1/opencode/connection');
-  assert.equal(missing.status, 503);
-  assert.equal(missing.headers.get('cache-control'), 'no-store');
-  assert.equal((await missing.json()).error.code, 'NOT_READY');
-});
-
-test('REST submissions reject removed autonomy and initiator fields independently', async (t) => {
-  const { request } = await fixture(t);
-  for (const legacyField of ['autonomy', 'initiator', 'deadlineAt'] as const) {
-    const response = await request('/v1/tasks/task', 'PUT', {
-      ...submission,
-      [legacyField]: legacyField === 'autonomy' ? 'guided' : 'tester',
+  const post = (path: string) =>
+    fetch(`${mcp}${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
     });
-    assert.equal(response.status, 400);
-    assert.equal((await response.json()).error.code, 'VALIDATION_FAILED');
-  }
+  assert.equal((await post('/mcp/runs/missing/stages/plan')).status, 404);
+  assert.equal((await fetch(`${mcp}/mcp`)).status, 405);
 });
 
-test('REST starts setup and archives without an execution lifecycle', async (t) => {
-  const { core, request } = await fixture(t);
-  await request('/v1/tasks/task', 'PUT', submission);
-  const archived = await (await request('/v1/tasks/task/archive', 'POST')).json();
-  assert.equal(archived.setup.status, 'pending');
-  assert.ok(archived.archivedAt);
-  assert.deepEqual(await (await request('/v1/tasks/task/archive', 'POST')).json(), archived);
-  const started = await (await request('/v1/tasks/task/start', 'POST')).json();
-  assert.equal(started.setup.status, 'starting');
-  assert.equal(started.report, null);
-  assert.equal(started.archivedAt, archived.archivedAt);
-  assert.deepEqual(await (await request('/v1/tasks/task/start', 'POST')).json(), started);
-  core.reportStatus('task', 'done', { status: 'done', summary: 'Finished' });
-  const detail = await (await request('/v1/tasks/task')).json();
-  assert.equal(detail.report.status, 'done');
-  assert.equal(detail.setup.status, 'starting');
-});
-
-test('REST start propagates asynchronous initializer results and sanitizes exceptions', async (t) => {
-  const { core, request } = await fixture(t, undefined, async (id) => {
-    await Promise.resolve();
-    core.start(id);
-    return core.setSetup(id, {
-      status: 'unknown',
-      error: { code: 'DELIVERY_UNKNOWN', message: 'Inspect OpenCode.' },
-    });
+test('bad input, unknown runs and unreadiness return JSON errors', async (t) => {
+  const { request, setReady } = await serve(t);
+  const bad = await request('/v1/runs', {
+    method: 'POST',
+    body: JSON.stringify({ issueUrl: 'https://example.com/x' }),
   });
-  core.accept('task', submission);
-  const response = await request('/v1/tasks/task/start', 'POST');
-  assert.equal(response.status, 200);
-  assert.equal((await response.json()).setup.status, 'unknown');
-  const broken = await fixture(t, undefined, async () => {
-    throw new Error('private-runtime-detail');
-  });
-  broken.core.accept('task', submission);
-  const failure = await broken.request('/v1/tasks/task/start', 'POST');
-  assert.equal(failure.status, 500);
-  assert.deepEqual(await failure.json(), {
-    error: { code: 'INTERNAL_ERROR', message: 'Unable to process this request.' },
-  });
-});
-
-test('REST exposes its versioned schema and leaves unversioned business routes unavailable', async (t) => {
-  const { request } = await fixture(t);
-  assert.deepEqual(await (await request('/v1/openapi.json')).json(), openApiDocument);
-  for (const [path, method] of [
-    ['/tasks', 'GET'],
-    ['/tasks/task', 'PUT'],
-    ['/tasks/task/start', 'POST'],
-    ['/agents', 'GET'],
-    ['/t3/pairing', 'POST'],
-  ]) {
-    const response = await request(path, method);
-    assert.equal(response.status, 404);
-    assert.deepEqual(await response.json(), {
-      error: { code: 'ROUTE_NOT_FOUND', message: 'Route not found.' },
-    });
-  }
-  const unknown = await request('/v2/tasks');
-  assert.equal(unknown.status, 404);
-  assert.equal((await unknown.json()).error.code, 'ROUTE_NOT_FOUND');
-});
-
-test('readiness gates mutations while health and discovery remain readable', async (t) => {
-  const { request, setReady } = await fixture(t);
-  await request('/v1/tasks/task', 'PUT', submission);
+  assert.equal(bad.status, 400);
+  assert.equal(((await bad.json()) as { error: { code: string } }).error.code, 'VALIDATION_FAILED');
+  assert.equal((await request('/v1/runs/nope')).status, 404);
+  assert.equal((await request('/v1/nothing')).status, 404);
+  const factory = (await (await request('/v1/factory')).json()) as {
+    repos: string[];
+    label: string;
+  };
+  assert.deepEqual([factory.repos, factory.label], [['acme/widgets'], 'factory']);
   setReady(false);
-  assert.equal((await request('/healthz')).status, 200);
   assert.equal((await request('/readyz')).status, 503);
-  assert.equal((await request('/v1/agents')).status, 200);
-  assert.equal((await request('/v1/tasks/task')).status, 200);
-  for (const [path, method, body] of [
-    ['/v1/tasks/new', 'PUT', submission],
-    ['/v1/tasks/task/start', 'POST', undefined],
-    ['/v1/tasks/task/archive', 'POST', undefined],
-  ] as const) {
-    const response = await request(path, method, body);
-    assert.equal(response.status, 503);
-    assert.deepEqual(await response.json(), {
-      error: { code: 'NOT_READY', message: 'SAWD is not ready.' },
-    });
-  }
+  assert.equal((await request('/v1/poll', { method: 'POST' })).status, 503);
+  assert.equal((await request('/v1/runs')).status, 200);
 });
 
-test('invalid payloads and internal exceptions return sanitized JSON errors', async (t) => {
-  const { core, base, request } = await fixture(t);
-  const malformed = await fetch(`${base}/v1/tasks/task`, {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: '{"private":"do-not-echo",broken',
-  });
-  assert.equal(malformed.status, 400);
-  assert.deepEqual(await malformed.json(), {
-    error: { code: 'VALIDATION_FAILED', message: 'Invalid JSON request body.' },
-  });
-  assert.equal(
-    (await request('/v1/tasks/task', 'PUT', { ...submission, taskId: 'task' })).status,
-    400,
-  );
-  const oversized = await request('/v1/tasks/task', 'PUT', {
-    ...submission,
-    input: { instructions: 'x'.repeat(1024 * 1024) },
-  });
-  assert.equal(oversized.status, 413);
-  assert.equal((await oversized.json()).error.code, 'PAYLOAD_TOO_LARGE');
-  core.accept = () => {
-    throw new SawdError('Specific validation failure.', 400, 'CUSTOM_VALIDATION', {
-      field: 'title',
-    });
-  };
-  const validation = await request('/v1/tasks/task', 'PUT', submission);
-  assert.equal(validation.status, 400);
-  assert.deepEqual(await validation.json(), {
-    error: {
-      code: 'CUSTOM_VALIDATION',
-      message: 'Specific validation failure.',
-      details: { field: 'title' },
-    },
-  });
-  core.accept = () => {
-    throw new Error('private-internal-detail');
-  };
-  const failed = await request('/v1/tasks/task', 'PUT', submission);
-  assert.equal(failed.status, 500);
-  assert.deepEqual(await failed.json(), {
-    error: { code: 'INTERNAL_ERROR', message: 'Unable to process this request.' },
-  });
+test('with an API token every /v1 route needs it, and health checks do not', async (t) => {
+  const { request } = await serve(t, { apiToken: 'test-secret' });
+  assert.equal((await request('/v1/runs')).status, 401);
+  assert.equal((await request('/v1/runs', { token: 'wrong-secret' })).status, 401);
+  assert.equal((await request('/v1/runs', { token: 'test-secret' })).status, 200);
+  assert.equal((await request('/healthz')).status, 200);
 });
 
-test('configured bearer authorization protects REST without exposing CORS', async (t) => {
-  const { base, request } = await fixture(t, 'test-secret');
-  assert.equal((await fetch(`${base}/healthz`)).status, 200);
-  assert.equal((await fetch(`${base}/v1/agents`)).status, 401);
-  const unauthorized = await fetch(`${base}/v1/tasks`);
-  assert.deepEqual(await unauthorized.json(), {
-    error: { code: 'UNAUTHORIZED', message: 'A valid bearer token is required.' },
-  });
-  const response = await request('/v1/agents');
-  assert.equal(response.status, 200);
-  assert.equal(response.headers.get('access-control-allow-origin'), null);
-  assert.equal(response.headers.get('x-powered-by'), null);
-});
-
-test('removed runtime control and interaction routes return not found without mutating tasks', async (t) => {
-  const { core, request } = await fixture(t);
-  core.accept('task', submission);
-  const before = structuredClone(core.record('task'));
-  for (const path of ['/v1/tasks/task/follow-ups', '/v1/t3/pairing', '/v1/tasks/task/cancel']) {
-    const response = await request(path, 'POST', { instructions: 'Continue' });
-    assert.equal(response.status, 404);
-    assert.deepEqual(await response.json(), {
-      error: { code: 'ROUTE_NOT_FOUND', message: 'Route not found.' },
-    });
-  }
-  assert.deepEqual(core.record('task'), before);
+test('the event stream pushes each run change', async (t) => {
+  const { core, api } = await serve(t);
+  const controller = new AbortController();
+  t.after(() => controller.abort());
+  const response = await fetch(`${api}/v1/events`, { signal: controller.signal });
+  assert.match(response.headers.get('content-type') ?? '', /text\/event-stream/);
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+  const run = core.create(issue());
+  while (!text.includes('event: run')) text += decoder.decode((await reader.read()).value);
+  const payload = JSON.parse(/data: (.*)\n/.exec(text)![1]!) as { id: string; plan?: unknown };
+  assert.equal(payload.id, run.id);
+  assert.equal(payload.plan, undefined, 'events carry summaries only');
 });
