@@ -18,7 +18,7 @@ export function mountUi(app: Express, uiDirectory = defaultUiDirectory): void {
         res.status(503).json({
           error: {
             code: 'UI_NOT_BUILT',
-            message: 'Reporting Server Overview UI is not built. Run npm run build.',
+            message: 'The dashboard is not built. Run npm run build.',
           },
         });
         return;

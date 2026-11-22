@@ -1,14 +1,12 @@
 import { createHash } from 'node:crypto';
-import { isAbsolute } from 'node:path';
-import type { Provider } from './shared/types.ts';
 
-export class SawdError extends Error {
+export class FactoryError extends Error {
   readonly status: number;
   readonly code: string;
   readonly details?: Record<string, unknown>;
   constructor(message: string, status = 400, code?: string, details?: Record<string, unknown>) {
     super(message);
-    this.name = 'SawdError';
+    this.name = 'FactoryError';
     this.status = status;
     this.code =
       code ??
@@ -16,10 +14,9 @@ export class SawdError extends Error {
         {
           400: 'VALIDATION_FAILED',
           401: 'UNAUTHORIZED',
-          404: 'TASK_NOT_FOUND',
-          409: 'TASK_STATE_CONFLICT',
+          404: 'RUN_NOT_FOUND',
+          409: 'RUN_STATE_CONFLICT',
           413: 'PAYLOAD_TOO_LARGE',
-          415: 'UNSUPPORTED_MEDIA_TYPE',
           500: 'INTERNAL_ERROR',
           502: 'UPSTREAM_ERROR',
           503: 'NOT_READY',
@@ -29,64 +26,27 @@ export class SawdError extends Error {
     this.details = details;
   }
 }
-export type Capability = 'git' | 'docker' | 'node' | 'python';
-export type Status = 'running' | 'input_required' | 'done' | 'failed';
-export interface TaskSetup {
-  status: 'pending' | 'starting' | 'submitted' | 'failed' | 'unknown';
-  error?: { code: 'SETUP_FAILED' | 'DELIVERY_UNKNOWN'; message: string };
-}
-export interface TaskReport {
-  status: Status;
+
+/** Pipeline order. Review stages can send the run back to the stage before them. */
+export const stageNames = ['classify', 'plan', 'plan-review', 'implement', 'review', 'pr'] as const;
+export type StageName = (typeof stageNames)[number];
+
+export type RunStatus = 'queued' | 'running' | 'needs_input' | 'done' | 'failed' | 'cancelled';
+export type StageStatus = 'running' | 'done' | 'changes_requested' | 'needs_input' | 'failed';
+export type ReportStatus = 'running' | 'input_required' | 'done' | 'failed';
+export type Verdict = 'pass' | 'changes_requested';
+
+export interface StageRecord {
+  name: StageName;
+  /** 1-based count of how many times this stage has run in this run. */
+  attempt: number;
+  status: StageStatus;
+  paneId: string | null;
   summary: string;
-  receivedAt: string;
+  startedAt: string;
+  endedAt: string | null;
 }
-export interface AgentProfile {
-  id: string;
-  name: string;
-  description: string;
-  capabilities: Capability[];
-  provider: string;
-  instanceId: string;
-  model: string;
-  workspaceRoot: string;
-}
-export function profiles(
-  providers: Provider[],
-  root: string | undefined,
-  capabilities: Capability[],
-): AgentProfile[] {
-  if (!root || !isAbsolute(root))
-    throw new SawdError('An absolute runtime workspace root is required.');
-  return providers.flatMap((provider) =>
-    provider.driver === 'opencode' && provider.available
-      ? provider.models.map((model) => ({
-          id: `opencode-${fingerprint([provider.id, model.id]).slice(0, 24)}`,
-          name: `${provider.name} · ${model.name}`,
-          description: `${provider.name} executor using ${model.name}.`,
-          capabilities: [...capabilities],
-          provider: provider.driver,
-          instanceId: provider.id,
-          model: model.id,
-          workspaceRoot: root,
-        }))
-      : [],
-  );
-}
-export type AttachmentInput =
-  | { kind: 'decision'; title: string; summary: string; rationale: string }
-  | { kind: 'artifact'; title: string; content: string; mediaType: 'text/markdown' | 'text/plain' }
-  | { kind: 'evidence'; title: string; text?: string; url?: string }
-  | { kind: 'context_reference'; title: string; url: string; description?: string };
-export type Attachment = AttachmentInput & { id: string; createdAt: string };
-export interface TaskDefinition {
-  title: string;
-  acceptanceCriteria: string[];
-  labels: string[];
-  executor: string;
-}
-export interface Submission extends TaskDefinition {
-  input: { instructions: string };
-}
+
 export interface PlanStep {
   id: string;
   text: string;
@@ -95,31 +55,128 @@ export interface PlanStep {
 export interface Plan {
   steps: PlanStep[];
 }
-export interface Task extends TaskDefinition {
+
+export type Reversibility = 'cheap' | 'costly' | 'one_way';
+export type Autonomy = 'L0' | 'L1' | 'L2' | 'L3';
+export const autonomyLevels = ['L0', 'L1', 'L2', 'L3'] as const satisfies readonly Autonomy[];
+
+export type AttachmentInput =
+  | {
+      kind: 'decision';
+      title: string;
+      summary: string;
+      rationale: string;
+      /** The alternatives that were considered. */
+      options?: string[];
+      /** How hard the decision is to undo. `one_way` always needs a human at autonomy L2. */
+      reversibility?: Reversibility;
+      /** What the decision touches: modules, services or users. */
+      blastRadius?: string;
+    }
+  | { kind: 'artifact'; title: string; content: string; mediaType: 'text/markdown' | 'text/plain' }
+  | { kind: 'evidence'; title: string; text?: string; url?: string }
+  | { kind: 'context_reference'; title: string; url: string; description?: string };
+export type Attachment = AttachmentInput & { id: string; stage: StageName; createdAt: string };
+
+export interface Issue {
+  /** `owner/name`. */
+  repo: string;
+  number: number;
+  title: string;
+  body: string;
+  url: string;
+  labels: string[];
+  state: 'open' | 'closed';
+}
+
+/** A human decision the run is waiting for, raised by the autonomy policy. */
+export interface Approval {
+  /** The stage that just finished; the run continues after it once approved. */
+  after: StageName;
+  reasons: string[];
+  requestedAt: string;
+}
+
+/** What the autonomy policy decided for a run. */
+export interface PolicyResult {
+  autonomy: Autonomy;
+  /** Why the change counts as critical. Empty when no rule matched. */
+  critical: string[];
+  /** A human approved the critical change. */
+  approved: boolean;
+}
+
+/** `requested`: merge or auto-merge was set up. `held`: policy kept it for a human. */
+export type MergeState = 'requested' | 'held' | 'failed';
+
+export interface Change {
+  path: string;
+  added: number;
+  deleted: number;
+}
+
+export interface Run {
   id: string;
-  setup: TaskSetup;
-  report: TaskReport | null;
-  archivedAt: string | null;
-  runtimeUrl: string | null;
+  repo: string;
+  issueNumber: number;
+  issueUrl: string;
+  title: string;
+  branch: string;
+  baseBranch: string | null;
+  worktreePath: string | null;
+  workspaceId: string | null;
+  status: RunStatus;
+  /** Why the run stopped, for `needs_input`, `failed` and `cancelled`. */
+  statusReason: string | null;
+  stages: StageRecord[];
   plan: Plan;
   attachments: Attachment[];
-  input: { instructions: string };
+  prUrl: string | null;
+  approval: Approval | null;
+  policy: PolicyResult | null;
+  merge: MergeState | null;
   createdAt: string;
   updatedAt: string;
 }
-export type TaskSummary = Omit<Task, 'input' | 'acceptanceCriteria' | 'plan' | 'attachments'>;
+export type RunSummary = Omit<Run, 'plan' | 'attachments'>;
+
+export interface StageReport {
+  status: ReportStatus;
+  summary: string;
+  verdict?: Verdict;
+  prUrl?: string;
+  plan?: Plan;
+}
+
 export interface ReportReceipt {
-  taskId: string;
+  runId: string;
+  stage: StageName;
   operationId: string;
   receivedAt: string;
 }
-export interface TaskRecord {
-  task: Task;
-  submissionHash: string;
-  threadId: string;
-  workspacePath: string;
-  operations: Map<string, { hash: string; result: unknown }>;
+
+export interface RunRecord {
+  run: Run;
+  /** Retry-safe agent writes: the same operation ID with the same payload is applied once. */
+  operations: Record<string, { hash: string; result: unknown }>;
 }
+
+export const activeStage = (run: Pick<Run, 'stages'>): StageRecord | undefined =>
+  run.stages.findLast((stage) => stage.status === 'running');
+
+export const isTerminal = (status: RunStatus) =>
+  status === 'done' || status === 'failed' || status === 'cancelled';
+
+export function branchName(issueNumber: number, title: string): string {
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40)
+    .replace(/-+$/, '');
+  return `factory/${issueNumber}${slug ? `-${slug}` : ''}`;
+}
+
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
   if (value && typeof value === 'object')

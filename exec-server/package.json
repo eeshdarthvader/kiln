@@ -1,22 +1,21 @@
 {
-  "name": "sawd-execution-server",
-  "version": "0.1.0",
+  "name": "software-factory",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "engines": {
     "node": "26.13.1"
   },
   "scripts": {
-    "start": "node src/index.ts",
-    "dev": "node --watch src/index.ts",
+    "start": "node --env-file-if-exists=.env src/index.ts",
+    "dev": "node --env-file-if-exists=.env --watch src/index.ts",
     "dev:ui": "vite --host 127.0.0.1 --port 5174",
     "build": "npm run typecheck && vite build",
     "typecheck": "tsc --noEmit",
     "test": "node --test 'src/**/*.test.ts'",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "smoke": "node scripts/smoke.mjs",
-    "smoke:native": "node scripts/smoke.mjs --native"
+    "smoke": "node scripts/smoke.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",

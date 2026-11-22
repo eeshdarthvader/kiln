@@ -1,17 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import type { Agent, Task, TaskSummary } from './types';
-import { createApi, errorText, taskPath } from './api';
-import { CreateTask } from './CreateTask';
-import { TaskList } from './TaskList';
-import { Workspace } from './Workspace';
-import { DateLabel, Modal } from './components';
+import { AddIssue } from './AddIssue';
+import { createApi, errorText, runPath, subscribe } from './api';
+import { Modal } from './components';
+import { RunDetail } from './RunDetail';
+import { RunList } from './RunList';
+import type { FactoryInfo, Run, RunSummary } from './types';
 import './styles.css';
 
 function selectedFromHash(): string | null {
   try {
-    return window.location.hash.startsWith('#/tasks/')
-      ? decodeURIComponent(window.location.hash.slice(8)) || null
+    return window.location.hash.startsWith('#/runs/')
+      ? decodeURIComponent(window.location.hash.slice(7)) || null
       : null;
   } catch {
     return null;
@@ -31,7 +31,7 @@ function ApiAccess({
   return (
     <Modal title="API access" onClose={onClose}>
       <p className="muted">
-        If this server requires SAWD_API_TOKEN, enter it here. The token stays in memory for this
+        If this server requires FACTORY_API_TOKEN, enter it here. The token stays in memory for this
         page and is cleared when you reload.
       </p>
       <form
@@ -65,19 +65,17 @@ function ApiAccess({
 function App() {
   const [token, setToken] = useState('');
   const api = useMemo(() => createApi(token), [token]);
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [tasks, setTasks] = useState<TaskSummary[]>([]);
+  const [factory, setFactory] = useState<FactoryInfo | null>(null);
+  const [runs, setRuns] = useState<RunSummary[]>([]);
   const [selectedId, setSelectedId] = useState(selectedFromHash);
-  const [detail, setDetail] = useState<Task | null>(null);
+  const [detail, setDetail] = useState<Run | null>(null);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState('');
-  const [agentError, setAgentError] = useState('');
   const [detailError, setDetailError] = useState('');
-  const [lastRefresh, setLastRefresh] = useState('');
-  const [creating, setCreating] = useState(false);
+  const [live, setLive] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [accessOpen, setAccessOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const revision = useRef(0);
   const selectedRef = useRef(selectedId);
   selectedRef.current = selectedId;
 
@@ -94,58 +92,60 @@ function App() {
     return () => window.removeEventListener('hashchange', change);
   }, []);
 
+  // The list loads once, then the event stream keeps it current.
   useEffect(() => {
-    let canceled = false;
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    async function refresh() {
-      const currentRevision = revision.current;
-      const [agentResult, taskResult, detailResult] = await Promise.allSettled([
-        api<{ agents: Agent[] }>('/agents'),
-        api<{ tasks: TaskSummary[] }>('/tasks'),
-        selectedId ? api<Task>(taskPath(selectedId)) : Promise.resolve(null),
-      ]);
-      if (canceled) return;
-      if (currentRevision === revision.current) {
-        if (agentResult.status === 'fulfilled') {
-          setAgents(agentResult.value.agents);
-          setAgentError('');
-        } else setAgentError(errorText(agentResult.reason));
-        if (taskResult.status === 'fulfilled') {
-          setTasks(taskResult.value.tasks);
-          setListError('');
-          setLastRefresh(new Date().toISOString());
-        } else setListError(errorText(taskResult.reason));
-        if (detailResult.status === 'fulfilled') {
-          setDetail(detailResult.value);
-          setDetailError('');
-        } else setDetailError(errorText(detailResult.reason));
-      }
-      setLoading(false);
-      timeout = setTimeout(() => void refresh(), 5000);
-    }
-    void refresh();
+    let cancelled = false;
+    Promise.all([api<FactoryInfo>('/factory'), api<{ runs: RunSummary[] }>('/runs')])
+      .then(([info, list]) => {
+        if (cancelled) return;
+        setFactory(info);
+        setRuns(list.runs);
+        setListError('');
+      })
+      .catch((reason: unknown) => !cancelled && setListError(errorText(reason)))
+      .finally(() => !cancelled && setLoading(false));
+    const stop = subscribe(
+      token,
+      (value) => {
+        const run = value as RunSummary;
+        setRuns((previous) =>
+          previous.some((item) => item.id === run.id)
+            ? previous.map((item) => (item.id === run.id ? run : item))
+            : [run, ...previous],
+        );
+        // Events carry summaries; reload the open run for its plan and attachments.
+        if (run.id === selectedRef.current) setRefreshKey((key) => key + 1);
+      },
+      setLive,
+    );
     return () => {
-      canceled = true;
-      clearTimeout(timeout);
+      cancelled = true;
+      stop();
     };
+  }, [api, token]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    let cancelled = false;
+    api<Run>(runPath(selectedId))
+      .then((run) => {
+        if (cancelled) return;
+        setDetail(run);
+        setDetailError('');
+      })
+      .catch((reason: unknown) => !cancelled && setDetailError(errorText(reason)));
+    return () => void (cancelled = true);
   }, [api, selectedId, refreshKey]);
 
-  function update(task: Task) {
-    revision.current++;
-    if (selectedRef.current === task.id) setDetail(task);
-    setTasks((previous) =>
-      previous.some((item) => item.id === task.id)
-        ? previous.map((item) => (item.id === task.id ? task : item))
-        : [task, ...previous],
+  function update(run: Run) {
+    if (selectedRef.current === run.id) setDetail(run);
+    setRuns((previous) =>
+      previous.some((item) => item.id === run.id)
+        ? previous.map((item) => (item.id === run.id ? run : item))
+        : [run, ...previous],
     );
-    setRefreshKey((key) => key + 1);
   }
-  function created(task: Task) {
-    update(task);
-    setCreating(false);
-    window.location.hash = `/tasks/${encodeURIComponent(task.id)}`;
-  }
-  const hasRefreshError = !!(listError || agentError || detailError);
+  const active = runs.filter((run) => run.status === 'running' || run.status === 'queued').length;
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -159,113 +159,97 @@ function App() {
             Factory
           </span>
         </a>
-        <p className="eyebrow nav-label">Workspace</p>
+        <p className="eyebrow nav-label">Factory</p>
         <a className="nav-item" href="#/" aria-current={!selectedId ? 'page' : undefined}>
-          Tasks <span>{tasks.length}</span>
+          Runs <span>{runs.length}</span>
         </a>
         <div className="sidebar-bottom">
-          <span className="poc-badge">SAWD reporting</span>
+          <span className="poc-badge">Herdr · {factory?.herdrSession ?? '…'}</span>
           <p>
-            Task setup
+            {active} active
             <br />
-            Agent reports and results
+            GitHub issue → draft PR
           </p>
         </div>
       </aside>
       <div className="main-column">
         <header className="topbar">
-          <a href="#/">Reporting Server Overview</a>
+          <a href="#/">Software Factory</a>
           <div className="connection-state">
-            <span className={`live-dot ${hasRefreshError ? 'offline' : ''}`} aria-hidden="true" />
-            <span>
-              {hasRefreshError ? 'Refresh failed' : loading ? 'Connecting…' : 'Refreshes every 5s'}
-            </span>
+            <span className={`live-dot ${live ? '' : 'offline'}`} aria-hidden="true" />
+            <span>{live ? 'Live' : loading ? 'Connecting…' : 'Reconnecting…'}</span>
             <button className="text-button" onClick={() => setAccessOpen(true)}>
               API access{token ? ' · token set' : ''}
             </button>
           </div>
         </header>
         <main>
-          {(listError || agentError) && (
+          {listError && (
             <div className="error-notice" role="alert">
-              <p>{listError && `Task refresh: ${listError}`}</p>
-              {agentError && agentError !== listError && <p>Executor refresh: {agentError}</p>}
-              {lastRefresh && (
-                <p>
-                  Showing saved data from <DateLabel date={lastRefresh} />.
-                </p>
-              )}
+              <p>Could not load runs: {listError}</p>
               <div className="actions">
-                <button className="text-button" onClick={() => setRefreshKey((key) => key + 1)}>
-                  Retry refresh
-                </button>
                 <button className="text-button" onClick={() => setAccessOpen(true)}>
                   API access
                 </button>
               </div>
             </div>
           )}
-          {!loading && !agentError && !agents.length && (
-            <section className="notice">
-              <h2>No executors available</h2>
-              <p>
-                Wait for opencode discovery and server readiness, then refresh. A task needs an
-                available executor.
-              </p>
-              <button className="secondary compact" onClick={() => setRefreshKey((key) => key + 1)}>
-                Refresh executors
-              </button>
-            </section>
-          )}
           {loading ? (
             <p className="muted" role="status">
-              Loading reporting server…
+              Loading the factory…
             </p>
           ) : selectedId ? (
             <>
               {detailError && (
                 <div className="error-notice" role="alert">
-                  Task detail: {detailError}
-                  {detail?.id === selectedId && <p>The last loaded task is shown below.</p>}
+                  Run detail: {detailError}
                   <button className="text-button" onClick={() => setRefreshKey((key) => key + 1)}>
-                    Retry task refresh
+                    Retry
                   </button>
                 </div>
               )}
               {detail?.id === selectedId ? (
-                <Workspace
+                <RunDetail
                   key={selectedId}
-                  task={detail}
-                  agents={agents}
+                  run={detail}
                   api={api}
+                  herdrSession={factory?.herdrSession ?? 'factory'}
                   onUpdate={update}
                 />
               ) : !detailError ? (
                 <p className="muted" role="status">
-                  Loading task…
+                  Loading run…
                 </p>
               ) : (
-                <a href="#/">Back to all tasks</a>
+                <a href="#/">Back to all runs</a>
               )}
             </>
           ) : (
-            <TaskList
-              tasks={tasks}
-              agents={agents}
-              canCreate={agents.length > 0 && !agentError}
-              onCreate={() => setCreating(true)}
+            <RunList
+              runs={runs}
+              factory={factory}
+              onAdd={() => setAdding(true)}
+              onPoll={async () => {
+                await api('/poll', 'POST').catch((reason: unknown) =>
+                  setListError(errorText(reason)),
+                );
+                await api<FactoryInfo>('/factory')
+                  .then(setFactory)
+                  .catch(() => {});
+              }}
             />
           )}
         </main>
       </div>
-      {creating && (
-        <CreateTask
-          agents={agents}
+      {adding && (
+        <AddIssue
           api={api}
-          onClose={() => setCreating(false)}
-          onAccepted={update}
-          onCreated={created}
-          onAccess={() => setAccessOpen(true)}
+          onClose={() => setAdding(false)}
+          onCreated={(run) => {
+            update(run);
+            setAdding(false);
+            window.location.hash = `/runs/${encodeURIComponent(run.id)}`;
+          }}
         />
       )}
       {accessOpen && (
@@ -275,7 +259,6 @@ function App() {
           onSave={(nextToken) => {
             setToken(nextToken);
             setAccessOpen(false);
-            setRefreshKey((key) => key + 1);
           }}
         />
       )}
