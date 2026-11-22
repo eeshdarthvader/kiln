@@ -1,0 +1,17 @@
+{
+  "name": "software-factory",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "engines": {
+    "node": "26.13.1"
+  },
+  "scripts": {
+    "start": "npm run start -w @factory/control-plane",
+    "dev": "npm run dev -w @factory/control-plane",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  }
+}
