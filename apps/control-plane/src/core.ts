@@ -54,6 +54,7 @@ export class Core extends EventEmitter<{
       plan: { steps: [] },
       attachments: [],
       prUrl: null,
+      prState: null,
       approval: null,
       policy: null,
       merge: null,

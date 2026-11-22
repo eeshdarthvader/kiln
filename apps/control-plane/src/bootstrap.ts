@@ -10,6 +10,7 @@ import { Core } from './core.ts';
 import { GhCli } from './github/gh.ts';
 import { GitRepository } from './github/git.ts';
 import { Intake } from './github/intake.ts';
+import { PullRequestWatcher } from './github/pulls.ts';
 import { HerdrClient } from './herdr/client.ts';
 import { HerdrRuntime } from './herdr/runtime.ts';
 import { Pipeline } from './pipeline.ts';
@@ -62,10 +63,12 @@ export async function start(config: Config = configuration()): Promise<() => Pro
   let runtime: HerdrRuntime | undefined;
   let pipeline: Pipeline | undefined;
   let intake: Intake | undefined;
+  let pulls: PullRequestWatcher | undefined;
   const close = () => {
     closing ??= (async () => {
       ready = false;
       intake?.stop();
+      pulls?.stop();
       pipeline?.stop();
       runtime?.close();
       await Promise.all(
@@ -101,6 +104,8 @@ export async function start(config: Config = configuration()): Promise<() => Pro
     const engine = pipeline;
     intake = new Intake(core, github, config, (issue) => engine.submit(issue));
     const poller = intake;
+    pulls = new PullRequestWatcher(core, github, config);
+    const watcher = pulls;
     const apps = applications({
       core,
       config,
@@ -112,7 +117,10 @@ export async function start(config: Config = configuration()): Promise<() => Pro
       approve: (runId) => engine.approve(runId),
       reject: (runId, feedback) => engine.reject(runId, feedback),
       tail: (runId) => engine.tail(runId),
-      poll: () => poller.poll(),
+      poll: async () => {
+        await watcher.check();
+        return poller.poll();
+      },
       intake: () => ({ lastPollAt: poller.lastPollAt, lastError: poller.lastError }),
     });
 
@@ -130,6 +138,7 @@ export async function start(config: Config = configuration()): Promise<() => Pro
     stage = 'resuming runs';
     await pipeline.start();
     intake.start();
+    pulls.start();
     console.log(`Factory dashboard: http://127.0.0.1:${config.port}`);
     console.log(
       config.repos.length

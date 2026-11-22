@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { configuration, type Config } from './config.ts';
-import type { Change, Issue, Run, StageName } from './domain.ts';
+import type { Change, Issue, PrState, Run, StageName } from './domain.ts';
 import type { AgentRuntime, GitHub, Repository } from './ports.ts';
 
 /** Shared fakes for tests. Nothing here talks to Herdr, Docker or GitHub. */
@@ -95,6 +95,8 @@ export class FakeGitHub implements GitHub {
   pullRequest: string | null = null;
   failing = false;
   readonly merged: string[] = [];
+  /** What `pullRequestState` answers for a pull request URL; draft until told otherwise. */
+  readonly prStates = new Map<string, PrState>();
   mergeError: string | null = null;
   add(value: Issue) {
     this.issues.set(`${value.repo}#${value.number}`, structuredClone(value));
@@ -130,6 +132,10 @@ export class FakeGitHub implements GitHub {
   async mergePullRequest(prUrl: string) {
     if (this.mergeError) throw new Error(this.mergeError);
     this.merged.push(prUrl);
+    this.prStates.set(prUrl, 'merged');
+  }
+  async pullRequestState(prUrl: string): Promise<PrState> {
+    return this.prStates.get(prUrl) ?? 'draft';
   }
   async syncRepository(repo: string) {
     return `/repos/${repo}`;

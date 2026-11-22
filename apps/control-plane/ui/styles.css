@@ -1072,3 +1072,12 @@ legend {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+.label-badge.pr-merged {
+  background: var(--ok-bg, #dff3e4);
+  color: var(--ok, #1d6b3a);
+}
+.label-badge.pr-closed {
+  background: var(--danger-bg, #f6dede);
+  color: var(--danger, #8a2a2a);
+}

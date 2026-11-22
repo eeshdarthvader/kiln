@@ -2,14 +2,29 @@ import { useState } from 'react';
 import { DateLabel, Status } from './components';
 import type { FactoryInfo, RunStatus, RunSummary } from './types';
 
-const groups: Array<{ status: RunStatus; title: string }> = [
-  { status: 'needs_input', title: 'Needs input' },
-  { status: 'running', title: 'Running' },
-  { status: 'queued', title: 'Queued' },
-  { status: 'failed', title: 'Failed' },
-  { status: 'done', title: 'Pull request open' },
-  { status: 'cancelled', title: 'Cancelled' },
+const isMerged = (run: RunSummary) => run.status === 'done' && run.prState === 'merged';
+const groups: Array<{ key: string; title: string; match: (run: RunSummary) => boolean }> = [
+  { key: 'needs_input', title: 'Needs input', match: (run) => run.status === 'needs_input' },
+  { key: 'running', title: 'Running', match: (run) => run.status === 'running' },
+  { key: 'queued', title: 'Queued', match: (run) => run.status === 'queued' },
+  { key: 'failed', title: 'Failed', match: (run) => run.status === 'failed' },
+  {
+    key: 'open',
+    title: 'Pull request open',
+    match: (run) => run.status === 'done' && run.prState !== 'merged' && run.prState !== 'closed',
+  },
+  { key: 'merged', title: 'Merged', match: isMerged },
+  {
+    key: 'closed',
+    title: 'Pull request closed',
+    match: (run) => run.status === 'done' && run.prState === 'closed',
+  },
+  { key: 'cancelled', title: 'Cancelled', match: (run) => run.status === 'cancelled' },
 ];
+
+/** A short label for where the run's pull request stands, shown next to the run. */
+export const prLabel = (run: Pick<RunSummary, 'prUrl' | 'prState'>) =>
+  run.prUrl ? `PR ${run.prState ?? 'open'}` : null;
 
 export const issueLabel = (run: Pick<RunSummary, 'repo' | 'issueNumber'>) =>
   `${run.repo}#${run.issueNumber}`;
@@ -40,7 +55,9 @@ function RunRow({ run }: { run: RunSummary }) {
                 {stage.attempt > 1 ? ` · attempt ${stage.attempt}` : ''}
               </span>
             )}
-            {run.prUrl && <span className="label-badge">PR open</span>}
+            {prLabel(run) && (
+              <span className={`label-badge pr-${run.prState ?? 'open'}`}>{prLabel(run)}</span>
+            )}
             <span className="muted small">
               Updated <DateLabel date={run.updatedAt} />
             </span>
@@ -90,7 +107,13 @@ export function RunList({
           <strong>{count('needs_input')}</strong> need input
         </span>
         <span>
-          <strong>{count('done')}</strong> pull requests
+          <strong>
+            {runs.filter((run) => run.status === 'done' && run.prState !== 'merged').length}
+          </strong>{' '}
+          open PRs
+        </span>
+        <span>
+          <strong>{runs.filter(isMerged).length}</strong> merged
         </span>
         <span>
           <strong>{count('failed')}</strong> failed
@@ -147,20 +170,18 @@ export function RunList({
       )}
       {runs.length ? (
         groups
-          .filter((group) => count(group.status))
+          .filter((group) => runs.some(group.match))
           .map((group) => (
-            <section className="panel tasks-panel" key={group.status}>
+            <section className="panel tasks-panel" key={group.key}>
               <div className="section-heading">
                 <h2>
-                  {group.title} <span className="count">{count(group.status)}</span>
+                  {group.title} <span className="count">{runs.filter(group.match).length}</span>
                 </h2>
               </div>
               <ol className="task-list">
-                {runs
-                  .filter((run) => run.status === group.status)
-                  .map((run) => (
-                    <RunRow key={run.id} run={run} />
-                  ))}
+                {runs.filter(group.match).map((run) => (
+                  <RunRow key={run.id} run={run} />
+                ))}
               </ol>
             </section>
           ))

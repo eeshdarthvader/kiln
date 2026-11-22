@@ -35,6 +35,9 @@ export type RunStatus = 'queued' | 'running' | 'needs_input' | 'done' | 'failed'
 export type StageStatus = 'running' | 'done' | 'changes_requested' | 'needs_input' | 'failed';
 export type ReportStatus = 'running' | 'input_required' | 'done' | 'failed';
 export type Verdict = 'pass' | 'changes_requested';
+/** A reviewer's read of how much a change alters existing behaviour. */
+export type Risk = 'low' | 'high';
+export type PrState = 'draft' | 'open' | 'merged' | 'closed';
 
 export interface StageRecord {
   name: StageName;
@@ -132,6 +135,8 @@ export interface Run {
   plan: Plan;
   attachments: Attachment[];
   prUrl: string | null;
+  /** The pull request's state on GitHub, refreshed while the run's PR is still open. */
+  prState: PrState | null;
   approval: Approval | null;
   policy: PolicyResult | null;
   merge: MergeState | null;
@@ -144,6 +149,9 @@ export interface StageReport {
   status: ReportStatus;
   summary: string;
   verdict?: Verdict;
+  /** The review stage can flag a drastic logic change; `high` always needs a human at L2. */
+  risk?: Risk;
+  riskReason?: string;
   prUrl?: string;
   plan?: Plan;
 }

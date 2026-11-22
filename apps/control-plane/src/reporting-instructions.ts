@@ -5,7 +5,8 @@ export const reportingInstructions = `Report this stage's progress and result to
 report_status({ operationId, report: { status, summary, verdict?, prUrl?, plan? } })
 - status "running": when you start and at real milestones.
 - status "done": the stage's work is complete. Review stages set verdict to "pass" or
-  "changes_requested". The pr stage sets prUrl to the pull request URL.
+  "changes_requested", and risk to "low" or "high" (with riskReason) for how drastically the
+  change alters existing logic. The pr stage sets prUrl to the pull request URL.
 - status "input_required": a human must decide something first. The summary is posted on the
   GitHub issue, so phrase it as a clear question. The stage ends when you send this.
 - status "failed": the stage cannot be completed. Say what blocked you. The stage ends.
