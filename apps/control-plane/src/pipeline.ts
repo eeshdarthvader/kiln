@@ -126,6 +126,7 @@ export class Pipeline {
         draft.approval = null;
         draft.policy = null;
         draft.merge = null;
+        draft.prState = null;
       });
       this.pump();
       return queued;
@@ -355,7 +356,7 @@ export class Pipeline {
     await this.closeStage(runId, 'done', report.summary);
     const next = stageNames[stageNames.indexOf(name) + 1];
     if (next) {
-      if (await this.gate(runId, name)) return;
+      if (await this.gate(runId, name, report)) return;
       await this.startStage(runId, next);
       return;
     }
@@ -367,10 +368,12 @@ export class Pipeline {
       return;
     }
     const merged = await this.merge(runId, prUrl);
+    const prState = await this.github.pullRequestState(prUrl).catch(() => null);
     const finished = this.core.update(runId, (draft) => {
       draft.status = 'done';
       draft.prUrl = prUrl;
       draft.merge = merged.state;
+      draft.prState = prState ?? 'draft';
     });
     await this.dropWorkspace(runId);
     await this.notify(
@@ -386,13 +389,20 @@ export class Pipeline {
    * The autonomy policy. After `review` (and after `plan-review` at L0) it decides whether a
    * human must approve before the run goes on. Returns true when the run was paused.
    */
-  private async gate(runId: string, name: StageName): Promise<boolean> {
+  private async gate(runId: string, name: StageName, report: StageReport): Promise<boolean> {
     if (name !== 'plan-review' && name !== 'review') return false;
     const run = this.core.get(runId);
     const policy = await this.policyFor(run);
     let critical: string[] = [];
     if (name === 'review')
-      critical = [...(await this.changeReasons(run, policy)), ...oneWayDecisions(run)];
+      critical = [
+        ...(await this.changeReasons(run, policy)),
+        ...oneWayDecisions(run),
+        // A reviewer may raise the stakes; it can never lower what the rules found.
+        ...(report.risk === 'high'
+          ? [`Reviewer flagged a significant logic change: ${report.riskReason ?? report.summary}`]
+          : []),
+      ];
     this.core.update(runId, (draft) => {
       draft.policy = { autonomy: policy.autonomy, critical, approved: false };
     });

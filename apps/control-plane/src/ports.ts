@@ -1,4 +1,4 @@
-import type { Change, Issue, Run, StageName } from './domain.ts';
+import type { Change, Issue, PrState, Run, StageName } from './domain.ts';
 
 /** Where agents run. Herdr in production, an in-memory fake in tests. */
 export interface AgentRuntime {
@@ -34,6 +34,8 @@ export interface GitHub {
   comment(repo: string, number: number, body: string): Promise<void>;
   defaultBranch(repo: string): Promise<string>;
   pullRequestForBranch(repo: string, branch: string): Promise<string | null>;
+  /** Where a pull request stands on GitHub right now. */
+  pullRequestState(prUrl: string): Promise<PrState>;
   /** Marks the pull request ready and merges it, or queues it to merge once checks pass. */
   mergePullRequest(prUrl: string): Promise<void>;
   /** Clones the repository on first use, fetches afterwards, and returns the local path. */

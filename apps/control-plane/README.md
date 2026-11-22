@@ -56,7 +56,9 @@ cannot loosen the policy on its own branch). Without the file, `FACTORY_AUTONOMY
 
 A change is **critical** when it touches a protected path (anything under `.factory/` always
 counts), changes a dependency manifest or lockfile (`dependencies: true`), exceeds the line or
-file limit, or an agent recorded a `one_way` decision. Agents can raise a decision's
+file limit, an agent recorded a `one_way` decision, or the `review` agent reported `risk: high`
+(it judges whether the change alters existing logic beyond what the issue asks; it can raise the
+stakes but never lower what the rules found). Agents can raise a decision's
 reversibility but a rule match always wins. If the policy file is invalid or the diff cannot be
 read, the run fails safe: an invalid policy drops to `L1`, an unreadable diff counts as critical.
 
@@ -106,6 +108,10 @@ Open <http://127.0.0.1:3775>. Label an issue `factory` in a watched repository, 
 run is a workspace and each stage a tab.
 
 The factory uses its own Herdr session and never touches your default one.
+
+The dashboard follows each pull request after the run ends: **PR draft**, **PR open**, **PR merged**
+or **PR closed**, refreshed every `FACTORY_POLL_SECONDS` (and on "Check now"). It shows a merge
+whoever made it: the factory, auto-merge once checks passed, or you on GitHub.
 
 ## Configuration
 

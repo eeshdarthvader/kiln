@@ -3,7 +3,7 @@ import { errorText, runPath, type Api } from './api';
 import { AttachmentPreview } from './AttachmentPreview';
 import { Attachments } from './Attachments';
 import { DateLabel, Markdown, PlanProgress, Status, safeUrl } from './components';
-import { issueLabel } from './RunList';
+import { issueLabel, prLabel } from './RunList';
 import type { Run, StageRecord } from './types';
 
 function duration(stage: StageRecord): string {
@@ -111,6 +111,9 @@ export function RunDetail({
               <a href={prUrl} target="_blank" rel="noreferrer">
                 Pull request ↗
               </a>
+            )}
+            {prLabel(run) && (
+              <Status value={run.prState === 'merged' ? 'done' : 'queued'} label={prLabel(run)!} />
             )}
             <span className="muted">
               Updated <DateLabel date={run.updatedAt} />

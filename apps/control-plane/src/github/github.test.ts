@@ -6,6 +6,7 @@ import { MemoryRunStore } from '../store.ts';
 import { FakeGitHub, issue, testConfig } from '../testing.ts';
 import { GhCli } from './gh.ts';
 import { Intake } from './intake.ts';
+import { PullRequestWatcher } from './pulls.ts';
 
 function recorder(replies: Record<string, string>) {
   const calls: Array<{ line: string; input?: string }> = [];
@@ -103,4 +104,40 @@ test('intake starts labelled issues once and restarts stopped runs that were re-
   github.failing = true;
   assert.deepEqual(await intake.poll(), []);
   assert.match(intake.lastError ?? '', /acme\/widgets: gh is offline/);
+});
+
+test('pull request state maps gh output, and the watcher follows merges by anyone', async () => {
+  const { run } = recorder({ 'gh pr view': 'MERGED false\n' });
+  assert.equal(await new GhCli('/tmp/x', run).pullRequestState('u'), 'merged');
+  assert.equal(
+    await new GhCli('/tmp/x', recorder({ 'gh pr view': 'OPEN true\n' }).run).pullRequestState('u'),
+    'draft',
+  );
+  assert.equal(
+    await new GhCli('/tmp/x', recorder({ 'gh pr view': 'OPEN false\n' }).run).pullRequestState('u'),
+    'open',
+  );
+  assert.equal(
+    await new GhCli('/tmp/x', recorder({ 'gh pr view': 'CLOSED false\n' }).run).pullRequestState(
+      'u',
+    ),
+    'closed',
+  );
+
+  const core = new Core(new MemoryRunStore());
+  const github = new FakeGitHub();
+  const created = core.create(issue());
+  const pr = 'https://github.com/acme/widgets/pull/8';
+  core.update(created.id, (draft) => {
+    draft.status = 'done';
+    draft.prUrl = pr;
+    draft.prState = 'draft';
+  });
+  const watcher = new PullRequestWatcher(core, github, testConfig());
+  assert.equal(await watcher.check(), 0, 'nothing changed yet');
+  github.prStates.set(pr, 'merged');
+  assert.equal(await watcher.check(), 1);
+  assert.equal(core.get(created.id).prState, 'merged');
+  github.prStates.set(pr, 'closed');
+  assert.equal(await watcher.check(), 0, 'a merged pull request is not checked again');
 });

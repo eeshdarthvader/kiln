@@ -59,6 +59,8 @@ export const reportSchema = z
     status: z.enum(['running', 'input_required', 'done', 'failed']),
     summary: readable,
     verdict: z.enum(['pass', 'changes_requested']).optional(),
+    risk: z.enum(['low', 'high']).optional(),
+    riskReason: readable.optional(),
     prUrl: webUrl.optional(),
     plan: z
       .object({
