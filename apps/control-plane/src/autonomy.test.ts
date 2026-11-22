@@ -55,10 +55,22 @@ function factory(t: TestContext, overrides: Partial<Config> = {}) {
       assert.equal(current?.status, 'running');
     });
   /** Runs the stages up to and including `review`, which passes. */
-  const through = async (runId: string, last: StageName = 'review') => {
+  const through = async (
+    runId: string,
+    last: StageName = 'review',
+    reviewExtra: Partial<StageReport> = {},
+  ) => {
     await stageRunning(runId, 'classify');
     for (const stage of ['classify', 'plan', 'plan-review', 'implement', 'review'] as const) {
-      const run = await report(runId, stage, stage.endsWith('review') ? { verdict: 'pass' } : {});
+      const run = await report(
+        runId,
+        stage,
+        stage === 'review'
+          ? { verdict: 'pass', ...reviewExtra }
+          : stage === 'plan-review'
+            ? { verdict: 'pass' }
+            : {},
+      );
       if (stage === last) return run;
     }
     throw new Error('unreachable');
@@ -238,4 +250,51 @@ test('without a policy file the default autonomy applies', async (t) => {
   await stageRunning(run.id, 'pr');
   const done = await report(run.id, 'pr', { prUrl: PR });
   assert.equal(done.merge, 'requested');
+});
+
+test('a reviewer flagging high risk forces approval at L2 even when no rule matches', async (t) => {
+  const { github, repository, pipeline, through } = factory(t);
+  repository.policy = policy({ autonomy: 'L2' });
+  repository.diff = [{ path: 'src/health.ts', added: 5, deleted: 0 }];
+  await pipeline.start();
+  const run = await pipeline.submit(github.add(issue()));
+  const paused = await through(run.id, 'review', {
+    risk: 'high',
+    riskReason: 'Changes how existing sessions expire.',
+  });
+  assert.equal(paused.status, 'needs_input');
+  assert.deepEqual(paused.approval?.reasons, [
+    'Reviewer flagged a significant logic change: Changes how existing sessions expire.',
+  ]);
+});
+
+test('low risk never lowers a rule match, and a low-risk small change still merges', async (t) => {
+  const { github, repository, pipeline, report, stageRunning, through } = factory(t);
+  repository.policy = policy({ autonomy: 'L2', critical: { maxFiles: 1 } });
+  repository.diff = [
+    { path: 'a.ts', added: 1, deleted: 0 },
+    { path: 'b.ts', added: 1, deleted: 0 },
+  ];
+  await pipeline.start();
+  const run = await pipeline.submit(github.add(issue()));
+  const paused = await through(run.id, 'review', { risk: 'low' });
+  assert.equal(paused.status, 'needs_input', 'the file limit still applies');
+
+  const second = await pipeline.submit(github.add(issue({ number: 8 })));
+  repository.diff = [{ path: 'a.ts', added: 1, deleted: 0 }];
+  await through(second.id, 'review', { risk: 'low' });
+  await stageRunning(second.id, 'pr');
+  const done = await report(second.id, 'pr', { prUrl: PR });
+  assert.equal(done.merge, 'requested');
+});
+
+test('a finished run records the pull request state', async (t) => {
+  const { github, repository, pipeline, report, stageRunning, through } = factory(t);
+  repository.policy = policy({ autonomy: 'L1' });
+  await pipeline.start();
+  const run = await pipeline.submit(github.add(issue()));
+  await through(run.id);
+  await stageRunning(run.id, 'pr');
+  const done = await report(run.id, 'pr', { prUrl: PR });
+  assert.equal(done.prState, 'draft');
 });

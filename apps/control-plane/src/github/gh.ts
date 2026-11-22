@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { FactoryError, type Issue } from '../domain.ts';
+import { FactoryError, type Issue, type PrState } from '../domain.ts';
 import type { GitHub } from '../ports.ts';
 
 export type Execute = (command: string, args: string[], input?: string) => Promise<string>;
@@ -146,6 +146,22 @@ export class GhCli implements GitHub {
       '.[0].url // ""',
     ]);
     return output.trim() || null;
+  }
+
+  async pullRequestState(prUrl: string): Promise<PrState> {
+    const output = await this.run('gh', [
+      'pr',
+      'view',
+      prUrl,
+      '--json',
+      'state,isDraft',
+      '--jq',
+      '.state + " " + (.isDraft | tostring)',
+    ]);
+    const [state, draft] = output.trim().split(' ');
+    if (state === 'MERGED') return 'merged';
+    if (state === 'CLOSED') return 'closed';
+    return draft === 'true' ? 'draft' : 'open';
   }
 
   async mergePullRequest(prUrl: string): Promise<void> {
