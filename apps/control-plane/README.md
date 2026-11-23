@@ -1,4 +1,4 @@
-# Software factory
+# Kiln control plane
 
 Takes a GitHub issue, runs it through a pipeline of Claude Code agents, and ends with a draft
 pull request. A small server drives the pipeline; [Herdr](https://herdr.dev) supplies the
