@@ -1,6 +1,6 @@
-# Software factory
+# Kiln
 
-A monorepo for a software factory: GitHub issues in, pull requests out, with Claude Code agents
+Kiln is a software factory: GitHub issues in, pull requests out, with Claude Code agents
 orchestrated through Herdr.
 
 | Path                                       | What it is                                                                 |

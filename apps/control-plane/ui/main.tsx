@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { AddIssue } from './AddIssue';
 import { createApi, errorText, runPath, subscribe } from './api';
 import { Modal } from './components';
+import { Logo } from './Logo';
 import { RunDetail } from './RunDetail';
 import { RunList } from './RunList';
 import type { FactoryInfo, Run, RunSummary } from './types';
@@ -150,16 +151,13 @@ function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <a className="brand" href="#/">
-          <span className="brand-mark" aria-hidden="true">
-            sf
-          </span>
+          <Logo size={40} />
           <span>
-            Software
-            <br />
-            Factory
+            Kiln
+            <small>Issue → PR</small>
           </span>
         </a>
-        <p className="eyebrow nav-label">Factory</p>
+        <p className="eyebrow nav-label">Workspace</p>
         <a className="nav-item" href="#/" aria-current={!selectedId ? 'page' : undefined}>
           Runs <span>{runs.length}</span>
         </a>
@@ -174,7 +172,7 @@ function App() {
       </aside>
       <div className="main-column">
         <header className="topbar">
-          <a href="#/">Software Factory</a>
+          <a href="#/">Kiln</a>
           <div className="connection-state">
             <span className={`live-dot ${live ? '' : 'offline'}`} aria-hidden="true" />
             <span>{live ? 'Live' : loading ? 'Connecting…' : 'Reconnecting…'}</span>
@@ -183,7 +181,7 @@ function App() {
             </button>
           </div>
         </header>
-        <main>
+        <main key={selectedId ?? 'runs'}>
           {listError && (
             <div className="error-notice" role="alert">
               <p>Could not load runs: {listError}</p>
