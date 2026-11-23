@@ -29,7 +29,8 @@ export class FactoryError extends Error {
 
 /** Pipeline order. Review stages can send the run back to the stage before them. */
 export const stageNames = ['classify', 'plan', 'plan-review', 'implement', 'review', 'pr'] as const;
-export type StageName = (typeof stageNames)[number];
+/** `resolve` is not part of the sequence: it runs when a branch conflicts with its base. */
+export type StageName = (typeof stageNames)[number] | 'resolve';
 
 export type RunStatus = 'queued' | 'running' | 'needs_input' | 'done' | 'failed' | 'cancelled';
 export type StageStatus = 'running' | 'done' | 'changes_requested' | 'needs_input' | 'failed';

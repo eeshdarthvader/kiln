@@ -27,6 +27,7 @@ export const stagePrompt: PromptBuilder = (run, stage, attempt, runDirectory) =>
       `- Run directory: ${runDirectory}`,
       `- Repository checkout: ${run.worktreePath}`,
       `- Branch: ${run.branch}`,
+      ...(run.prUrl ? [`- Pull request: ${run.prUrl}`] : []),
       `- Base branch: origin/${run.baseBranch}`,
       `- Stage attempt: ${attempt}`,
     ].join('\n'),

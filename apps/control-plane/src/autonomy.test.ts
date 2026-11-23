@@ -298,3 +298,49 @@ test('a finished run records the pull request state', async (t) => {
   const done = await report(run.id, 'pr', { prUrl: PR });
   assert.equal(done.prState, 'draft');
 });
+
+test('a branch that conflicts with its base gets a resolve stage before the pull request', async (t) => {
+  const { core, github, repository, runtime, pipeline, report, through } = factory(t);
+  repository.syncResult = 'conflict';
+  await pipeline.start();
+  const run = await pipeline.submit(github.add(issue()));
+  await through(run.id);
+  assert.equal(core.get(run.id).stages.at(-1)?.name, 'resolve');
+  assert.equal(repository.synced.length, 1);
+  await report(run.id, 'resolve');
+  assert.equal(core.get(run.id).stages.at(-1)?.name, 'pr');
+  assert.equal(runtime.started.at(-1)?.stage, 'pr');
+});
+
+test('a clean rebase goes straight to the pull request', async (t) => {
+  const { core, github, repository, pipeline, through } = factory(t);
+  repository.syncResult = 'rebased';
+  await pipeline.start();
+  const run = await pipeline.submit(github.add(issue()));
+  await through(run.id);
+  assert.equal(core.get(run.id).stages.at(-1)?.name, 'pr');
+});
+
+test('a finished run whose pull request starts conflicting is sent to a resolve agent', async (t) => {
+  const { core, github, pipeline, report, stageRunning, through } = factory(t);
+  await pipeline.start();
+  const run = await pipeline.submit(github.add(issue()));
+  await through(run.id);
+  await stageRunning(run.id, 'pr');
+  await report(run.id, 'pr', { prUrl: PR });
+  assert.equal(core.get(run.id).status, 'done');
+
+  await pipeline.resolveConflicts(run.id);
+  assert.equal(core.get(run.id).status, 'running');
+  assert.equal(core.get(run.id).stages.at(-1)?.name, 'resolve');
+  await report(run.id, 'resolve');
+  assert.equal(core.get(run.id).status, 'done');
+  assert.equal(core.get(run.id).prUrl, PR);
+
+  // It is not retried forever.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    await pipeline.resolveConflicts(run.id);
+    if (core.get(run.id).status === 'running') await report(run.id, 'resolve');
+  }
+  assert.ok(core.get(run.id).stages.filter((stage) => stage.name === 'resolve').length <= 3);
+});

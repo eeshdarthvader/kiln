@@ -141,3 +141,31 @@ test('pull request state maps gh output, and the watcher follows merges by anyon
   github.prStates.set(pr, 'closed');
   assert.equal(await watcher.check(), 0, 'a merged pull request is not checked again');
 });
+
+test('conflicts are read from gh, and the watcher hands conflicting pull requests on', async () => {
+  assert.equal(
+    await new GhCli('/tmp/x', recorder({ 'gh pr view': 'CONFLICTING\n' }).run).hasConflicts('u'),
+    true,
+  );
+  assert.equal(
+    await new GhCli('/tmp/x', recorder({ 'gh pr view': 'MERGEABLE\n' }).run).hasConflicts('u'),
+    false,
+  );
+
+  const core = new Core(new MemoryRunStore());
+  const github = new FakeGitHub();
+  const pr = 'https://github.com/acme/widgets/pull/9';
+  const created = core.create(issue());
+  core.update(created.id, (draft) => {
+    draft.status = 'done';
+    draft.prUrl = pr;
+    draft.prState = 'open';
+  });
+  const conflicted: string[] = [];
+  const watcher = new PullRequestWatcher(core, github, testConfig(), (id) => conflicted.push(id));
+  await watcher.check();
+  assert.deepEqual(conflicted, []);
+  github.conflicting.add(pr);
+  await watcher.check();
+  assert.deepEqual(conflicted, [created.id]);
+});
