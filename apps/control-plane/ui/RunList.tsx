@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { DateLabel, Status } from './components';
+import { Count } from './Logo';
 import type { FactoryInfo, RunStatus, RunSummary } from './types';
 
 const isMerged = (run: RunSummary) => run.status === 'done' && run.prState === 'merged';
@@ -85,7 +86,7 @@ export function RunList({
     <>
       <header className="page-heading">
         <div>
-          <p className="eyebrow">Software Factory</p>
+          <p className="eyebrow">Kiln</p>
           <h1>Runs</h1>
           <p className="muted">
             Each run takes one GitHub issue through classify, plan, review, implement, review and a
@@ -98,25 +99,42 @@ export function RunList({
       </header>
       <div className="overview-stats">
         <span>
-          <strong>{count('running')}</strong> running
-        </span>
-        <span>
-          <strong>{count('queued')}</strong> queued
-        </span>
-        <span>
-          <strong>{count('needs_input')}</strong> need input
+          <strong>
+            <Count value={count('running')} />
+          </strong>{' '}
+          running
         </span>
         <span>
           <strong>
-            {runs.filter((run) => run.status === 'done' && run.prState !== 'merged').length}
+            <Count value={count('queued')} />
+          </strong>{' '}
+          queued
+        </span>
+        <span>
+          <strong>
+            <Count value={count('needs_input')} />
+          </strong>{' '}
+          need input
+        </span>
+        <span>
+          <strong>
+            <Count
+              value={runs.filter((run) => run.status === 'done' && run.prState !== 'merged').length}
+            />
           </strong>{' '}
           open PRs
         </span>
         <span>
-          <strong>{runs.filter(isMerged).length}</strong> merged
+          <strong>
+            <Count value={runs.filter(isMerged).length} />
+          </strong>{' '}
+          merged
         </span>
         <span>
-          <strong>{count('failed')}</strong> failed
+          <strong>
+            <Count value={count('failed')} />
+          </strong>{' '}
+          failed
         </span>
       </div>
       {factory && (
