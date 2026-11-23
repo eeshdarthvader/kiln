@@ -64,6 +64,14 @@ export function RunDetail({
   herdrSession: string;
   onUpdate: (run: Run) => void;
 }) {
+  // Older finished runs were stored with every step still pending; a done run did them all.
+  const finishedPlan =
+    run.status === 'done'
+      ? {
+          ...run.plan,
+          steps: run.plan.steps.map((step) => ({ ...step, status: 'completed' as const })),
+        }
+      : run.plan;
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [attachmentId, setAttachmentId] = useState<string | null>(null);
@@ -226,11 +234,11 @@ export function RunDetail({
             <div className="section-heading">
               <h2>Plan</h2>
               <span className="muted">
-                {run.plan.steps.filter((step) => step.status === 'completed').length}/
-                {run.plan.steps.length} done
+                {finishedPlan.steps.filter((step) => step.status === 'completed').length}/
+                {finishedPlan.steps.length} done
               </span>
             </div>
-            <PlanProgress plan={run.plan} title={run.title} />
+            <PlanProgress plan={finishedPlan} title={run.title} />
           </section>
           <Terminal run={run} api={api} />
           <Attachments attachments={run.attachments} onOpen={(item) => setAttachmentId(item.id)} />
