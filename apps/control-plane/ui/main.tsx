@@ -159,8 +159,29 @@ function App() {
         </a>
         <p className="eyebrow nav-label">Workspace</p>
         <a className="nav-item" href="#/" aria-current={!selectedId ? 'page' : undefined}>
-          Runs <span>{runs.length}</span>
+          All runs <span>{runs.length}</span>
         </a>
+        <nav className="run-nav" aria-label="Runs">
+          <ol>
+            {runs.map((run) => (
+              <li key={run.id}>
+                <a
+                  href={`#/runs/${encodeURIComponent(run.id)}`}
+                  aria-current={run.id === selectedId ? 'page' : undefined}
+                  title={`${run.repo}#${run.issueNumber}: ${run.title} (${run.status.replaceAll('_', ' ')})`}
+                >
+                  <span className={`run-dot run-dot-${run.status}`} aria-hidden="true" />
+                  <span className="run-nav-text">
+                    <span className="run-nav-title">{run.title}</span>
+                    <span className="run-nav-meta">
+                      #{run.issueNumber} · {run.status.replaceAll('_', ' ')}
+                    </span>
+                  </span>
+                </a>
+              </li>
+            ))}
+          </ol>
+        </nav>
         <div className="sidebar-bottom">
           <span className="poc-badge">Herdr · {factory?.herdrSession ?? '…'}</span>
           <p>
