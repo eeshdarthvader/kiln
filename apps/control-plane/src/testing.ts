@@ -163,7 +163,7 @@ export class FakeGitHub implements GitHub {
 export class FakeRepository implements Repository {
   /** What `patch` answers. */
   patchText = '';
-  async patch() {
+  async patch(_worktree?: string, _base?: string) {
     return this.patchText;
   }
   /** The policy file's text on the base branch, or null when the repository has none. */

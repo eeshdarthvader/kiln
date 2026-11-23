@@ -18,6 +18,13 @@ export interface Changes {
   note?: string;
 }
 
+/** A file that two or more unfinished runs of the same repository have both changed. */
+export interface Overlap {
+  repo: string;
+  path: string;
+  runIds: string[];
+}
+
 /** What a run has changed so far, for the dashboard's Changes panel. */
 export class ChangesService {
   private readonly core: Core;
@@ -27,6 +34,45 @@ export class ChangesService {
     this.core = core;
     this.github = github;
     this.repository = repository;
+  }
+
+  private overlapCache: { at: number; value: Overlap[] } | undefined;
+
+  /** Files touched by more than one unfinished run, which is where merge conflicts come from. */
+  async overlaps(): Promise<Overlap[]> {
+    if (this.overlapCache && Date.now() - this.overlapCache.at < 15_000)
+      return this.overlapCache.value;
+    const repository = this.repository;
+    const byFile = new Map<string, { repo: string; path: string; runIds: string[] }>();
+    if (repository) {
+      const active = this.core
+        .list()
+        .filter(
+          (run) =>
+            ['queued', 'running', 'needs_input'].includes(run.status) &&
+            run.worktreePath &&
+            run.baseBranch &&
+            existsSync(run.worktreePath),
+        );
+      await Promise.all(
+        active.map(async (run) => {
+          try {
+            const diff = await repository.patch(run.worktreePath!, `origin/${run.baseBranch}`);
+            for (const file of parseDiff(diff).files) {
+              const key = `${run.repo}\0${file.path}`;
+              const entry = byFile.get(key) ?? { repo: run.repo, path: file.path, runIds: [] };
+              entry.runIds.push(run.id);
+              byFile.set(key, entry);
+            }
+          } catch {
+            // A worktree that cannot be read just does not take part.
+          }
+        }),
+      );
+    }
+    const value = [...byFile.values()].filter((entry) => entry.runIds.length > 1);
+    this.overlapCache = { at: Date.now(), value };
+    return value;
   }
 
   async changes(runId: string): Promise<Changes> {

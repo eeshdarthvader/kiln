@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { Board } from './Board';
 import { DateLabel, Status } from './components';
 import type { Api } from './api';
 import { Inbox } from './Inbox';
@@ -36,7 +37,7 @@ export const issueLabel = (run: Pick<RunSummary, 'repo' | 'issueNumber' | 'ticke
 export const issueRef = (run: Pick<RunSummary, 'issueNumber' | 'ticket'>) =>
   run.ticket ? run.ticket.key : `#${run.issueNumber}`;
 
-function RunRow({ run }: { run: RunSummary }) {
+function RunRow({ run, overlaps }: { run: RunSummary; overlaps: boolean }) {
   const stage = run.stages.at(-1);
   return (
     <li>
@@ -64,6 +65,9 @@ function RunRow({ run }: { run: RunSummary }) {
                 {stage.attempt > 1 ? ` · attempt ${stage.attempt}` : ''}
               </span>
             )}
+            {overlaps && (
+              <span className="label-badge overlap-badge">Shares files with another run</span>
+            )}
             {prLabel(run) && (
               <span className={`label-badge pr-${run.prState ?? 'open'}`}>{prLabel(run)}</span>
             )}
@@ -84,6 +88,7 @@ export function RunList({
   factory,
   onAdd,
   onPoll,
+  overlapping,
 }: {
   api: Api;
   onUpdate: (run: Run) => void;
@@ -91,8 +96,23 @@ export function RunList({
   factory: FactoryInfo | null;
   onAdd: () => void;
   onPoll: () => Promise<void>;
+  overlapping: Set<string>;
 }) {
   const [polling, setPolling] = useState(false);
+  const [view, setView] = useState<'list' | 'board'>(() => {
+    try {
+      return localStorage.getItem('kiln-view') === 'board' ? 'board' : 'list';
+    } catch {
+      return 'list';
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('kiln-view', view);
+    } catch {
+      // The choice just is not remembered.
+    }
+  }, [view]);
   const count = (status: RunStatus) => runs.filter((run) => run.status === status).length;
   return (
     <>
@@ -199,7 +219,24 @@ export function RunList({
           )}
         </section>
       )}
-      {runs.length ? (
+      {runs.length > 0 && (
+        <div className="view-toggle" role="group" aria-label="Layout">
+          {(['list', 'board'] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              className="secondary compact"
+              aria-pressed={view === value}
+              onClick={() => setView(value)}
+            >
+              {value === 'list' ? 'List' : 'Board'}
+            </button>
+          ))}
+        </div>
+      )}
+      {runs.length && view === 'board' ? (
+        <Board runs={runs} overlapping={overlapping} />
+      ) : runs.length ? (
         groups
           .filter((group) => runs.some(group.match))
           .map((group) => (
@@ -211,7 +248,7 @@ export function RunList({
               </div>
               <ol className="task-list">
                 {runs.filter(group.match).map((run) => (
-                  <RunRow key={run.id} run={run} />
+                  <RunRow key={run.id} run={run} overlaps={overlapping.has(run.id)} />
                 ))}
               </ol>
             </section>
