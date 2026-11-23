@@ -371,6 +371,8 @@ export class Pipeline {
     const prState = await this.github.pullRequestState(prUrl).catch(() => null);
     const finished = this.core.update(runId, (draft) => {
       draft.status = 'done';
+      // Agents rarely report each step as completed; a finished run has done them all.
+      for (const step of draft.plan.steps) step.status = 'completed';
       draft.prUrl = prUrl;
       draft.merge = merged.state;
       draft.prState = prState ?? 'draft';
