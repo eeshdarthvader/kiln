@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kiln architecture</title>
+<style>
+:root{--bg:#0a0c12;--surface:#121622;--border:#323b55;--text:#e8ebf5;--muted:#8089a3;--ember:#ff6a3d}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 -apple-system,"SF Pro Text",Helvetica,Arial,sans-serif}
+main{max-width:1040px;margin:0 auto;padding:32px 20px 48px}
+h1{margin:0 0 4px;font-size:28px;background:linear-gradient(135deg,#ffb347,#ff6a3d 55%,#ff2e7e);-webkit-background-clip:text;color:transparent}
+.sub{color:var(--muted);margin:0 0 24px}
+svg{width:100%;height:auto;display:block}
+.node rect{fill:var(--surface);stroke:var(--border);stroke-width:1.5;rx:12;transition:.2s}
+.node text{fill:var(--text);font-size:14px;font-weight:600;text-anchor:middle;pointer-events:none}
+.node .s{fill:var(--muted);font-size:11px;font-weight:400}
+.node{cursor:pointer;outline:none}
+.node:hover rect,.node:focus-visible rect{stroke:var(--ember)}
+.node.on rect{stroke:var(--ember);fill:#ff6a3d1a;filter:drop-shadow(0 0 10px #ff6a3d66)}
+.lane{fill:#ffffff06;stroke:#323b55;stroke-width:1.5;rx:16}.lane.cp{fill:#ff6a3d0d;stroke:#ff6a3d99;stroke-width:2}.lane.rt{fill:#5cc8ff0d;stroke:#5cc8ff99;stroke-width:2}
+.lane-t{fill:var(--muted);font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase}.lane-t.cp{fill:#ff8a5c}.lane-t.rt{fill:#5cc8ff}
+.edge{fill:none;stroke:#46506d;stroke-width:1.5}
+.dot{fill:#ffb347;filter:drop-shadow(0 0 5px #ff6a3d)}
+#info{margin-top:18px;padding:18px 20px;border:1px solid var(--border);border-radius:14px;background:var(--surface);min-height:110px}
+#info h2{margin:0 0 6px;font-size:17px}
+#info p{margin:0;color:#b4bbd0}
+#info code{color:#ffb347}
+@media (prefers-reduced-motion:reduce){.dot{display:none}}
+</style>
+</head>
+<body>
+<main>
+<h1>Kiln architecture</h1>
+<p class="sub">Click any block to see what it does. The glowing dots show work flowing through.</p>
+<svg viewBox="0 0 960 470" role="img" aria-label="Kiln block diagram">
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#46506d"/></marker></defs>
+  <rect class="lane" x="10" y="10" width="170" height="450"/><text class="lane-t" x="26" y="34">Intake</text>
+  <rect class="lane cp" x="200" y="10" width="400" height="450"/><text class="lane-t cp" x="216" y="34">Control plane</text>
+  <rect class="lane rt" x="620" y="10" width="330" height="385"/><text class="lane-t rt" x="636" y="34">Runtime</text>
+  <g id="edges">
+    <path class="edge" marker-end="url(#a)" d="M170 95H240"/>
+    <path class="edge" d="M170 215H215V95"/>
+    <path class="edge" d="M170 335H215V215"/>
+    <path class="edge" marker-end="url(#a)" d="M400 95H430V215H470"/>
+    <path class="edge" marker-end="url(#a)" d="M470 225H400"/>
+    <path class="edge" marker-end="url(#a)" d="M580 215H650"/>
+    <path class="edge" marker-end="url(#a)" d="M790 245V300"/>
+    <path class="edge" marker-end="url(#a)" d="M930 340H945V95H930"/>
+    <path class="edge" marker-end="url(#a)" d="M650 95H525V180"/>
+    <path class="edge" marker-end="url(#a)" d="M525 250V340H480"/>
+    <path class="edge" marker-end="url(#a)" d="M790 380V415"/>
+    <path class="edge" marker-end="url(#a)" d="M360 380V435H640"/>
+  </g>
+  <g class="node" tabindex="0" data-id="gh"><rect x="30" y="60" width="140" height="70"/><text x="100" y="93">GitHub issues</text><text class="s" x="100" y="112">label: factory</text></g>
+  <g class="node" tabindex="0" data-id="tp"><rect x="30" y="180" width="140" height="70"/><text x="100" y="213">Task providers</text><text class="s" x="100" y="232">Jira, any tracker</text></g>
+  <g class="node" tabindex="0" data-id="url"><rect x="30" y="300" width="140" height="70"/><text x="100" y="333">Paste a URL</text><text class="s" x="100" y="352">from the dashboard</text></g>
+  <g class="node" tabindex="0" data-id="intake"><rect x="240" y="60" width="160" height="70"/><text x="320" y="93">Intake</text><text class="s" x="320" y="112">poll and dedupe</text></g>
+  <g class="node" tabindex="0" data-id="pipe"><rect x="470" y="180" width="110" height="70"/><text x="525" y="211">Pipeline</text><text class="s" x="525" y="230">engine</text></g>
+  <g class="node" tabindex="0" data-id="policy"><rect x="240" y="300" width="240" height="80"/><text x="360" y="333">Autonomy policy</text><text class="s" x="360" y="352">L0 to L3, rules from the base branch</text></g>
+  <g class="node" tabindex="0" data-id="store"><rect x="240" y="180" width="160" height="70"/><text x="320" y="211">Run store</text><text class="s" x="320" y="230">JSON on disk</text></g>
+  <g class="node" tabindex="0" data-id="herdr"><rect x="650" y="180" width="280" height="65"/><text x="790" y="210">Herdr session</text><text class="s" x="790" y="228">worktree, one tab per stage</text></g>
+  <g class="node" tabindex="0" data-id="agent"><rect x="650" y="300" width="280" height="80"/><text x="790" y="333">Claude Code agent</text><text class="s" x="790" y="352">in a Docker container</text></g>
+  <g class="node" tabindex="0" data-id="mcp"><rect x="650" y="60" width="280" height="70"/><text x="790" y="93">Reporting MCP</text><text class="s" x="790" y="112">agents call report_status</text></g>
+  <g class="node" tabindex="0" data-id="pr2"><rect x="640" y="415" width="300" height="40"/><text x="790" y="440">Pull request</text></g>
+
+  <circle class="dot" r="4"><animateMotion dur="2.2s" begin="0s" repeatCount="indefinite" path="M170 95H240"/></circle>
+  <circle class="dot" r="4"><animateMotion dur="2.6s" begin="0.4s" repeatCount="indefinite" path="M170 335H215V95H240"/></circle>
+  <circle class="dot" r="4"><animateMotion dur="2.2s" begin="0.8s" repeatCount="indefinite" path="M400 95H430V215H470"/></circle>
+  <circle class="dot" r="4"><animateMotion dur="1.4s" begin="1.2s" repeatCount="indefinite" path="M580 215H650"/></circle>
+  <circle class="dot" r="4"><animateMotion dur="1.4s" begin="1.6s" repeatCount="indefinite" path="M790 245V300"/></circle>
+  <circle class="dot" r="4"><animateMotion dur="2.4s" begin="0.2s" repeatCount="indefinite" path="M930 340H945V95H930"/></circle>
+  <circle class="dot" r="4"><animateMotion dur="2.0s" begin="1.0s" repeatCount="indefinite" path="M650 95H525V180"/></circle>
+  <circle class="dot" r="4"><animateMotion dur="1.4s" begin="0.6s" repeatCount="indefinite" path="M790 380V415"/></circle>
+</svg>
+<section id="info" aria-live="polite"><h2>Pick a block</h2><p>Each block is a real part of the control plane or its runtime. Click one.</p></section>
+</main>
+<script>
+const text={
+gh:["GitHub issues","The factory polls watched repositories for the trigger label (<code>factory</code>) and starts a run. The issue shows <code>factory:in-progress</code>, <code>:needs-input</code>, <code>:failed</code> and <code>:done</code> as the run moves."],
+tp:["Task providers","Watch an external tracker such as Jira, or anything with labels and comments, for the same label. State is mirrored back as labels and comments. Configured in <code>providers.json</code>."],
+url:["Paste a URL","Add an issue or ticket by URL from the dashboard. The run starts, or an existing stopped run restarts."],
+intake:["Intake","One pass over every source each minute. Skips issues that already have an active or finished run, and re-queues stopped runs whose label was applied again."],
+pipe:["Pipeline engine","Drives classify, plan, plan-review, implement, review and PR. Loops review stages back (max 2), enforces timeouts and attempt caps, limits concurrency, and resumes in-flight runs after a restart. Starts a <code>resolve</code> agent when branches conflict."],
+policy:["Autonomy policy","The server, not the agents, decides what is critical, from rules in <code>.factory/policy.json</code> on the base branch. L0 and L1 stop at a draft PR; L2 merges unless something critical needs a human; L3 merges anything that passes."],
+store:["Run store","One JSON file per run, written atomically. Survives restarts, so work in flight resumes."],
+herdr:["Herdr session","Each run gets a git worktree and a workspace with one terminal tab per stage. Attach with <code>herdr --session factory</code> to watch or step in."],
+agent:["Claude Code agent","A fresh agent per stage, in a container that sees only the run's worktree, its repository clone and the run directory. It reads the issue, does the stage's job and reports back."],
+mcp:["Reporting MCP","Agents call <code>report_status</code> on a per-run, per-stage URL: done, failed, or input required, with a plan, decisions and evidence. Writes are idempotent."],
+pr2:["Pull request","Opened by the <code>pr</code> stage after the agent review, with the change described and the issue linked. The autonomy policy then decides: L0 and L1 leave a draft for a human; L2 and L3 merge (or queue the merge until checks pass) and hold critical changes for approval. State is tracked throughout."]};
+const info=document.getElementById('info');
+document.querySelectorAll('.node').forEach(n=>{
+ const show=()=>{const t=text[n.dataset.id]; if(!t) return;
+  document.querySelectorAll('.node').forEach(m=>m.classList.remove('on')); n.classList.add('on');
+  info.innerHTML=`<h2>${t[0]}</h2><p>${t[1]}</p>`;};
+ n.addEventListener('click',show);
+ n.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();show();}});
+});
+</script>
+</body>
+</html>
