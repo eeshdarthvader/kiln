@@ -1,6 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import express from 'express';
-import type { Changes } from './changes.ts';
+import type { Changes, Overlap } from './changes.ts';
 import type { Config } from './config.ts';
 import type { Core } from './core.ts';
 import { FactoryError, type Issue, type Run, type StageName } from './domain.ts';
@@ -31,6 +31,7 @@ export interface Services {
   tail(runId: string): Promise<{ stage: StageName | null; text: string }>;
   poll(): Promise<Run[]>;
   changes(runId: string): Promise<Changes>;
+  overlaps(): Promise<Overlap[]>;
   terminal?: TerminalService;
   /** Names of the configured external task providers. */
   providers?: () => string[];
@@ -89,6 +90,9 @@ export function applications(services: Services, uiDirectory?: string) {
   app.post('/v1/runs', async (req, res) => {
     const { issueUrl } = parse(newRunSchema, req.body);
     res.status(202).json(await services.submit(await services.resolve(issueUrl)));
+  });
+  app.get('/v1/overlaps', async (_req, res) => {
+    res.set('Cache-Control', 'no-store').json({ overlaps: await services.overlaps() });
   });
   app.get('/v1/runs/:id', (req, res) => {
     res.set('Cache-Control', 'no-store').json(core.get(req.params.id));

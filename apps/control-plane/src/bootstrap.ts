@@ -151,6 +151,7 @@ export async function start(config: Config = configuration()): Promise<() => Pro
       reject: (runId, feedback) => engine.reject(runId, feedback),
       tail: (runId) => engine.tail(runId),
       changes: (runId) => changes.changes(runId),
+      overlaps: () => changes.overlaps(),
       poll: async () => {
         await watcher.check();
         return poller.poll();

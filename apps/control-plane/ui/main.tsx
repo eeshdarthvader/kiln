@@ -7,7 +7,7 @@ import { Insights } from './Insights';
 import { Logo } from './Logo';
 import { RunDetail } from './RunDetail';
 import { RunList, issueRef } from './RunList';
-import type { FactoryInfo, Run, RunSummary } from './types';
+import type { FactoryInfo, Overlap, Run, RunSummary } from './types';
 import './styles.css';
 import './shell.css';
 
@@ -22,6 +22,24 @@ function selectedFromHash(): string | null {
 }
 
 const insightsFromHash = () => window.location.hash === '#/insights';
+
+function initialNotify(): 'on' | 'off' | 'blocked' | 'unsupported' {
+  if (typeof Notification === 'undefined') return 'unsupported';
+  if (Notification.permission === 'denied') return 'blocked';
+  try {
+    return Notification.permission === 'granted' && localStorage.getItem('kiln-notify') === 'on'
+      ? 'on'
+      : 'off';
+  } catch {
+    return 'off';
+  }
+}
+
+const notifyReasons: Record<string, string> = {
+  needs_input: 'needs your input',
+  failed: 'failed',
+  done: 'finished',
+};
 
 function ApiAccess({
   currentToken,
@@ -83,6 +101,10 @@ function App() {
   const [accessOpen, setAccessOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [overlaps, setOverlaps] = useState<Overlap[]>([]);
+  const [notify, setNotify] = useState<'on' | 'off' | 'blocked' | 'unsupported'>(initialNotify);
+  const notifyRef = useRef(notify);
+  notifyRef.current = notify;
   const [filter, setFilter] = useState('');
   const [announcement, setAnnouncement] = useState('');
   const statuses = useRef(new Map<string, string>());
@@ -125,8 +147,21 @@ function App() {
         const run = value as RunSummary;
         const before = statuses.current.get(run.id);
         statuses.current.set(run.id, run.status);
-        if (before && before !== run.status)
+        if (before && before !== run.status) {
           setAnnouncement(`${run.title} is now ${run.status.replaceAll('_', ' ')}.`);
+          const reason = notifyReasons[run.status];
+          if (reason && notifyRef.current === 'on' && !document.hasFocus()) {
+            const popup = new Notification(`${run.title} ${reason}`, {
+              body: `${run.repo}#${run.issueNumber}`,
+              tag: run.id,
+            });
+            popup.onclick = () => {
+              window.focus();
+              window.location.hash = `/runs/${encodeURIComponent(run.id)}`;
+              popup.close();
+            };
+          }
+        }
         setRuns((previous) =>
           previous.some((item) => item.id === run.id)
             ? previous.map((item) => (item.id === run.id ? run : item))
@@ -156,6 +191,31 @@ function App() {
     return () => void (cancelled = true);
   }, [api, selectedId, refreshKey]);
 
+  const activeCount = runs.filter((run) =>
+    ['queued', 'running', 'needs_input'].includes(run.status),
+  ).length;
+  const activeKey = runs
+    .filter((run) => ['queued', 'running', 'needs_input'].includes(run.status))
+    .map((run) => `${run.id}:${run.status}`)
+    .join(',');
+  useEffect(() => {
+    if (activeCount < 2) {
+      setOverlaps([]);
+      return;
+    }
+    let cancelled = false;
+    const load = () =>
+      api<{ overlaps: Overlap[] }>('/overlaps')
+        .then((value) => !cancelled && setOverlaps(value.overlaps))
+        .catch(() => {});
+    void load();
+    const timer = setInterval(() => void load(), 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [api, activeCount, activeKey]);
+  const overlapping = useMemo(() => new Set(overlaps.flatMap((item) => item.runIds)), [overlaps]);
   const attention = runs.filter((run) => run.status === 'needs_input').length;
   useEffect(() => {
     const name =
@@ -330,6 +390,45 @@ function App() {
             <div className="connection-state" role="status">
               <span className={`live-dot ${live ? '' : 'offline'}`} aria-hidden="true" />
               <span>{live ? 'Live' : loading ? 'Connecting…' : 'Reconnecting…'}</span>
+              {notify !== 'unsupported' && (
+                <button
+                  type="button"
+                  className="text-button"
+                  aria-pressed={notify === 'on'}
+                  disabled={notify === 'blocked'}
+                  title={
+                    notify === 'blocked'
+                      ? 'Notifications are blocked in your browser settings.'
+                      : 'Get a desktop notification when a run needs you, fails or finishes while this tab is in the background.'
+                  }
+                  onClick={() => {
+                    const remember = (value: string) => {
+                      try {
+                        localStorage.setItem('kiln-notify', value);
+                      } catch {
+                        // The choice just is not remembered.
+                      }
+                    };
+                    if (notify === 'on') {
+                      setNotify('off');
+                      remember('off');
+                      return;
+                    }
+                    void Notification.requestPermission().then((permission) => {
+                      setNotify(
+                        permission === 'granted'
+                          ? 'on'
+                          : permission === 'denied'
+                            ? 'blocked'
+                            : 'off',
+                      );
+                      if (permission === 'granted') remember('on');
+                    });
+                  }}
+                >
+                  {notify === 'blocked' ? 'Notifications blocked' : `Notifications ${notify}`}
+                </button>
+              )}
               <button className="text-button" onClick={() => setAccessOpen(true)}>
                 API access{token ? ' · token set' : ''}
               </button>
@@ -372,6 +471,8 @@ function App() {
                     api={api}
                     herdrSession={factory?.herdrSession ?? 'factory'}
                     terminal={factory?.terminal ?? false}
+                    overlaps={overlaps.filter((item) => item.runIds.includes(selectedId))}
+                    runs={runs}
                     onUpdate={update}
                   />
                 ) : !detailError ? (
@@ -388,6 +489,7 @@ function App() {
               <RunList
                 api={api}
                 onUpdate={update}
+                overlapping={overlapping}
                 runs={runs}
                 factory={factory}
                 onAdd={() => setAdding(true)}

@@ -19,3 +19,9 @@ export interface FactoryInfo {
   lastPollAt: string | null;
   lastError: string | null;
 }
+
+export interface Overlap {
+  repo: string;
+  path: string;
+  runIds: string[];
+}

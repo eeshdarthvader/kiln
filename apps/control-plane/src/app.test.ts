@@ -36,6 +36,7 @@ async function serve(t: TestContext, overrides: Partial<Config> = {}) {
     tail: (id) => pipeline.tail(id),
     poll: async () => [],
     changes: (id) => changes.changes(id),
+    overlaps: () => changes.overlaps(),
     intake: () => ({ lastPollAt: null, lastError: null }),
   });
   await pipeline.start();

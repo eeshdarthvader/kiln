@@ -14,8 +14,9 @@ import {
   useToast,
 } from './components';
 import { issueLabel, prLabel } from './RunList';
+import { Timeline } from './Timeline';
 import { WebTerminal } from './WebTerminal';
-import type { Run, StageRecord } from './types';
+import type { Overlap, Run, RunSummary, StageRecord } from './types';
 
 function duration(stage: StageRecord): string {
   const seconds = Math.max(
@@ -69,12 +70,16 @@ export function RunDetail({
   api,
   herdrSession,
   terminal,
+  overlaps,
+  runs,
   onUpdate,
 }: {
   run: Run;
   api: Api;
   herdrSession: string;
   terminal: boolean;
+  overlaps: Overlap[];
+  runs: RunSummary[];
   onUpdate: (run: Run) => void;
 }) {
   // Older finished runs were stored with every step still pending; a done run did them all.
@@ -234,6 +239,35 @@ export function RunDetail({
           )}
         </section>
       )}
+      {overlaps.length > 0 && (
+        <section className="notice" role="status" aria-labelledby="overlap-heading">
+          <h2 id="overlap-heading">Other runs are changing the same files</h2>
+          <p className="muted">
+            Whichever merges second will need its conflicts resolved. The factory handles that, but
+            it is cheaper to avoid.
+          </p>
+          <ul>
+            {overlaps.map((overlap) => (
+              <li key={overlap.path}>
+                <span className="path">{overlap.path}</span> also in{' '}
+                {overlap.runIds
+                  .filter((id) => id !== run.id)
+                  .map((id, index) => {
+                    const other = runs.find((item) => item.id === id);
+                    return (
+                      <span key={id}>
+                        {index > 0 && ', '}
+                        <a href={`#/runs/${encodeURIComponent(id)}`}>
+                          {other ? `${issueLabel(other)} ${other.title}` : id}
+                        </a>
+                      </span>
+                    );
+                  })}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <div className="workspace-grid">
         <div className="workspace-main">
           <section className="panel">
@@ -242,6 +276,7 @@ export function RunDetail({
                 Stages <span className="count">{run.stages.length}</span>
               </h2>
             </div>
+            <Timeline stages={run.stages} />
             {run.stages.length ? (
               <ol className="stage-list" aria-labelledby="stages-heading">
                 {run.stages.map((stage, index) => (
