@@ -18,9 +18,10 @@ export function AddIssue({
   return (
     <Modal title="Add an issue" onClose={onClose}>
       <p className="muted">
-        Paste a GitHub issue URL. The factory starts a run for it, or restarts the issue’s stopped
-        run. The repository does not need to be on the watch list, but the machine’s{' '}
-        <span className="path">gh</span> login must be able to push to it.
+        Paste a GitHub issue URL (or a ticket URL from a configured tracker). The factory starts a
+        run for it, or restarts the issue’s stopped run. The repository does not need to be on the
+        watch list, but the machine’s <span className="path">gh</span> login must be able to push to
+        it.
       </p>
       <form
         onSubmit={(event) => {

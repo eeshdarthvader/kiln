@@ -14,7 +14,10 @@ import { PullRequestWatcher } from './github/pulls.ts';
 import { HerdrClient } from './herdr/client.ts';
 import { HerdrRuntime } from './herdr/runtime.ts';
 import { Pipeline } from './pipeline.ts';
+import { loadProviders } from './tasks/providers.ts';
+import { parseIssueUrl } from './validation.ts';
 import { FileRunStore } from './store.ts';
+import { TerminalService } from './terminal.ts';
 
 export class StartupError extends Error {}
 
@@ -64,12 +67,14 @@ export async function start(config: Config = configuration()): Promise<() => Pro
   let pipeline: Pipeline | undefined;
   let intake: Intake | undefined;
   let pulls: PullRequestWatcher | undefined;
+  let terminal: TerminalService | undefined;
   const close = () => {
     closing ??= (async () => {
       ready = false;
       intake?.stop();
       pulls?.stop();
       pipeline?.stop();
+      terminal?.close();
       runtime?.close();
       await Promise.all(
         servers.map(
@@ -100,9 +105,14 @@ export async function start(config: Config = configuration()): Promise<() => Pro
     stage = 'loading runs';
     const core = new Core(new FileRunStore(join(config.home, 'runs')));
     const github = new GhCli(join(config.home, 'repos'));
-    pipeline = new Pipeline(core, runtime, github, config, { repository: new GitRepository() });
+    stage = 'loading task providers';
+    const providers = loadProviders(config);
+    pipeline = new Pipeline(core, runtime, github, config, {
+      repository: new GitRepository(),
+      providers: new Map(providers.map((provider) => [provider.name, provider])),
+    });
     const engine = pipeline;
-    intake = new Intake(core, github, config, (issue) => engine.submit(issue));
+    intake = new Intake(core, github, config, (issue) => engine.submit(issue), providers);
     const poller = intake;
     pulls = new PullRequestWatcher(
       core,
@@ -111,11 +121,26 @@ export async function start(config: Config = configuration()): Promise<() => Pro
       (runId) => void engine.resolveConflicts(runId),
     );
     const watcher = pulls;
+    if (config.terminal)
+      terminal = new TerminalService({
+        shell: config.terminalShell,
+        home: config.home,
+        worktree: (runId) => core.get(runId).worktreePath ?? undefined,
+      });
     const apps = applications({
       core,
+      ...(terminal ? { terminal } : {}),
       config,
       ready: () => ready,
-      issue: (repo, number) => github.issue(repo, number),
+      providers: () => providers.map((provider) => provider.name),
+      resolve: async (url) => {
+        for (const provider of providers) {
+          const key = provider.parseUrl(url.trim());
+          if (key) return provider.get(key);
+        }
+        const { repo, number } = parseIssueUrl(url);
+        return github.issue(repo, number);
+      },
       submit: (issue) => engine.submit(issue),
       retry: (runId) => engine.retry(runId),
       cancel: (runId) => engine.cancel(runId),
@@ -137,6 +162,7 @@ export async function start(config: Config = configuration()): Promise<() => Pro
     stage = `binding the HTTP listener to 127.0.0.1:${config.port}`;
     const http = apps.app.listen(config.port, '127.0.0.1');
     servers.push(http);
+    terminal?.attach(http);
     await once(http, 'listening');
 
     ready = true;
@@ -145,6 +171,8 @@ export async function start(config: Config = configuration()): Promise<() => Pro
     intake.start();
     pulls.start();
     console.log(`Factory dashboard: http://127.0.0.1:${config.port}`);
+    if (providers.length)
+      console.log(`Watching task providers: ${providers.map((item) => item.name).join(', ')}.`);
     console.log(
       config.repos.length
         ? `Watching ${config.repos.join(', ')} for the "${config.label}" label every ${config.pollSeconds}s.`

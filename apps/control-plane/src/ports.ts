@@ -44,6 +44,19 @@ export interface GitHub {
   syncRepository(repo: string): Promise<string>;
 }
 
+/** An external task tracker (Jira, ...) that supports labels and comments. */
+export interface TaskProvider {
+  readonly name: string;
+  /** Open tickets carrying the label. Each names the GitHub repository to build in. */
+  labelled(label: string): Promise<Issue[]>;
+  get(key: string): Promise<Issue>;
+  /** Adds and removes labels in one edit. */
+  relabel(key: string, add: string[], remove: string[]): Promise<void>;
+  comment(key: string, body: string): Promise<void>;
+  /** The ticket key a pasted URL refers to, or null when it is not this tracker's. */
+  parseUrl(url: string): string | null;
+}
+
 /** Reads a run's local git worktree, for the autonomy policy. */
 export interface Repository {
   /** A file as it is at `ref` (for example `origin/main`), or null when it does not exist. */

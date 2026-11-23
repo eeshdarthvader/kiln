@@ -27,8 +27,12 @@ const groups: Array<{ key: string; title: string; match: (run: RunSummary) => bo
 export const prLabel = (run: Pick<RunSummary, 'prUrl' | 'prState'>) =>
   run.prUrl ? `PR ${run.prState ?? 'open'}` : null;
 
-export const issueLabel = (run: Pick<RunSummary, 'repo' | 'issueNumber'>) =>
-  `${run.repo}#${run.issueNumber}`;
+export const issueLabel = (run: Pick<RunSummary, 'repo' | 'issueNumber' | 'ticket'>) =>
+  run.ticket ? `${run.ticket.key} → ${run.repo}` : `${run.repo}#${run.issueNumber}`;
+
+/** `#12` for a GitHub issue, `PROJ-12` for a tracker ticket. */
+export const issueRef = (run: Pick<RunSummary, 'issueNumber' | 'ticket'>) =>
+  run.ticket ? run.ticket.key : `#${run.issueNumber}`;
 
 function RunRow({ run }: { run: RunSummary }) {
   const stage = run.stages.at(-1);
@@ -38,11 +42,13 @@ function RunRow({ run }: { run: RunSummary }) {
         className={`task-row ${run.status === 'needs_input' ? 'task-attention' : ''}`}
         href={`#/runs/${encodeURIComponent(run.id)}`}
       >
-        <span className="queue-number">#{run.issueNumber}</span>
+        <span className="queue-number">{issueRef(run)}</span>
         <div className="task-summary">
           <div className="task-title">
             <h3>{run.title}</h3>
-            <span aria-hidden="true">↗</span>
+            <span aria-hidden="true" className="row-arrow">
+              ↗
+            </span>
           </div>
           <p className="muted">{run.repo}</p>
           <p className="task-note">
@@ -97,46 +103,46 @@ export function RunList({
           + Add issue
         </button>
       </header>
-      <div className="overview-stats">
-        <span>
+      <ul className="overview-stats" aria-label="Run summary">
+        <li>
           <strong>
             <Count value={count('running')} />
           </strong>{' '}
           running
-        </span>
-        <span>
+        </li>
+        <li>
           <strong>
             <Count value={count('queued')} />
           </strong>{' '}
           queued
-        </span>
-        <span>
+        </li>
+        <li>
           <strong>
             <Count value={count('needs_input')} />
           </strong>{' '}
           need input
-        </span>
-        <span>
+        </li>
+        <li>
           <strong>
             <Count
               value={runs.filter((run) => run.status === 'done' && run.prState !== 'merged').length}
             />
           </strong>{' '}
           open PRs
-        </span>
-        <span>
+        </li>
+        <li>
           <strong>
             <Count value={runs.filter(isMerged).length} />
           </strong>{' '}
           merged
-        </span>
-        <span>
+        </li>
+        <li>
           <strong>
             <Count value={count('failed')} />
           </strong>{' '}
           failed
-        </span>
-      </div>
+        </li>
+      </ul>
       {factory && (
         <section className="panel">
           <div className="section-heading">
@@ -211,7 +217,7 @@ export function RunList({
               Label an issue <span className="label-badge">{factory?.label ?? 'factory'}</span> in a
               watched repository, or add one by URL.
             </p>
-            <button className="secondary" onClick={onAdd}>
+            <button type="button" className="secondary" onClick={onAdd}>
               Add an issue
             </button>
           </div>

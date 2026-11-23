@@ -22,7 +22,9 @@ export const stagePrompt: PromptBuilder = (run, stage, attempt, runDirectory) =>
       '## This run',
       '',
       `- Repository: ${run.repo}`,
-      `- Issue: #${run.issueNumber} (${run.issueUrl})`,
+      run.ticket
+        ? `- Ticket: ${run.ticket.key} in ${run.ticket.provider} (${run.issueUrl}). It is not a GitHub issue: do not write \`Closes #…\`; name the ticket key and link in the pull request description instead.`
+        : `- Issue: #${run.issueNumber} (${run.issueUrl})`,
       `- Issue file: ${runDirectory}/issue.md`,
       `- Run directory: ${runDirectory}`,
       `- Repository checkout: ${run.worktreePath}`,

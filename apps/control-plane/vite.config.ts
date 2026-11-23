@@ -11,7 +11,7 @@ export default defineConfig({
     host: '127.0.0.1',
     port: 5174,
     proxy: {
-      '/v1': backend,
+      '/v1': { target: backend, ws: true },
       '/healthz': backend,
       '/readyz': backend,
     },
