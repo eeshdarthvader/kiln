@@ -20,6 +20,23 @@ export class GitRepository implements Repository {
     }
   }
 
+  async sync(worktree: string, base: string): Promise<'current' | 'rebased' | 'conflict'> {
+    await this.run('git', ['-C', worktree, 'fetch', 'origin', base]);
+    const behind = Number(
+      (
+        await this.run('git', ['-C', worktree, 'rev-list', '--count', `HEAD..origin/${base}`])
+      ).trim(),
+    );
+    if (!behind) return 'current';
+    try {
+      await this.run('git', ['-C', worktree, 'rebase', `origin/${base}`]);
+      return 'rebased';
+    } catch {
+      await this.run('git', ['-C', worktree, 'rebase', '--abort']).catch(() => {});
+      return 'conflict';
+    }
+  }
+
   async changes(worktree: string, base: string): Promise<Change[]> {
     const output = await this.run('git', [
       '-C',

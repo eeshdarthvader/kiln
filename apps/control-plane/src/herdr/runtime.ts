@@ -53,6 +53,28 @@ export class HerdrRuntime implements AgentRuntime {
         focus: false,
         trust_repository: true,
       });
+    } else if (target.prUrl) {
+      // A finished run whose pull request now conflicts: check out the pushed branch as it is.
+      await run('git', ['-C', repositoryPath, 'fetch', 'origin', target.branch]);
+      await run('git', ['-C', repositoryPath, 'worktree', 'prune']).catch(() => {});
+      await mkdir(join(this.config.home, 'worktrees'), { recursive: true });
+      await run('git', [
+        '-C',
+        repositoryPath,
+        'worktree',
+        'add',
+        '-B',
+        target.branch,
+        path,
+        `origin/${target.branch}`,
+      ]);
+      result = await this.client.call('worktree.open', {
+        cwd: repositoryPath,
+        path,
+        label,
+        focus: false,
+        trust_repository: true,
+      });
     } else {
       // A branch left behind by an earlier attempt would make git refuse to create the worktree.
       await run('git', ['-C', repositoryPath, 'worktree', 'prune']).catch(() => {});

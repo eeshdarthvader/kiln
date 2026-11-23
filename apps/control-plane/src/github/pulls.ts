@@ -12,10 +12,12 @@ export class PullRequestWatcher {
   private readonly core: Core;
   private readonly github: GitHub;
   private readonly config: Config;
-  constructor(core: Core, github: GitHub, config: Config) {
+  private readonly onConflict: ((runId: string) => void) | undefined;
+  constructor(core: Core, github: GitHub, config: Config, onConflict?: (runId: string) => void) {
     this.core = core;
     this.github = github;
     this.config = config;
+    this.onConflict = onConflict;
   }
 
   start(): void {
@@ -39,11 +41,20 @@ export class PullRequestWatcher {
         if (!run.prUrl || run.prState === 'merged' || run.prState === 'closed') continue;
         try {
           const state = await this.github.pullRequestState(run.prUrl);
-          if (state === run.prState) continue;
-          this.core.update(run.id, (draft) => {
-            draft.prState = state;
-          });
-          changed += 1;
+          if (state !== run.prState) {
+            this.core.update(run.id, (draft) => {
+              draft.prState = state;
+            });
+            changed += 1;
+          }
+          // Another run may have merged first and left this pull request unmergeable.
+          if (
+            this.onConflict &&
+            run.status === 'done' &&
+            (state === 'draft' || state === 'open') &&
+            (await this.github.hasConflicts(run.prUrl))
+          )
+            this.onConflict(run.id);
         } catch (error) {
           console.error(`Could not check ${run.prUrl}: ${(error as Error).message}`);
         }

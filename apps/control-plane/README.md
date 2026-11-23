@@ -28,6 +28,16 @@ a container, working in a git worktree for the run's branch (`factory/<issue>-<s
 | `review`      | Reviews the diff and reruns the checks; can send back to `implement` | `review.md`         |
 | `pr`          | Pushes the branch and opens a draft PR that closes the issue         |                     |
 
+### Parallel runs and merge conflicts
+
+Runs work on separate branches, so one run can merge while another is still going. Before the
+`pr` stage the server fetches the base branch and rebases the run's branch onto it. A clean rebase
+is silent; a conflict starts a `resolve` agent that merges both sets of changes, reruns the checks
+and records a decision for each non-trivial conflict. The pull request watcher also checks open pull
+requests of finished runs: if one starts conflicting because another merged first, the run reopens
+the pushed branch, runs `resolve`, force-pushes with lease, and merges again per the autonomy
+policy. Each run gets at most `FACTORY_MAX_STAGE_ATTEMPTS` resolve attempts.
+
 ## Autonomy: who decides what
 
 The agents never judge what is critical; the server does, with rules a person wrote. A repository

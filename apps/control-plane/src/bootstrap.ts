@@ -104,7 +104,12 @@ export async function start(config: Config = configuration()): Promise<() => Pro
     const engine = pipeline;
     intake = new Intake(core, github, config, (issue) => engine.submit(issue));
     const poller = intake;
-    pulls = new PullRequestWatcher(core, github, config);
+    pulls = new PullRequestWatcher(
+      core,
+      github,
+      config,
+      (runId) => void engine.resolveConflicts(runId),
+    );
     const watcher = pulls;
     const apps = applications({
       core,

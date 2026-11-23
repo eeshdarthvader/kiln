@@ -164,6 +164,19 @@ export class GhCli implements GitHub {
     return draft === 'true' ? 'draft' : 'open';
   }
 
+  async hasConflicts(prUrl: string): Promise<boolean> {
+    const output = await this.run('gh', [
+      'pr',
+      'view',
+      prUrl,
+      '--json',
+      'mergeable',
+      '--jq',
+      '.mergeable',
+    ]);
+    return output.trim() === 'CONFLICTING';
+  }
+
   async mergePullRequest(prUrl: string): Promise<void> {
     // The pr stage opens a draft; a draft cannot merge.
     await this.run('gh', ['pr', 'ready', prUrl]).catch(() => {});

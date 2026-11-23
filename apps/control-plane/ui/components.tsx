@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type CSSProperties, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import type { Plan } from './types';
 
@@ -54,27 +54,64 @@ export function Markdown({ text }: { text: string }) {
   );
 }
 
+const stepLabel: Record<string, string> = {
+  pending: 'Waiting',
+  running: 'In progress',
+  completed: 'Done',
+};
+
 export function PlanProgress({ plan, title }: { plan: Plan; title: string }) {
   if (!plan.steps.length) return <p className="muted small">Plan not published yet.</p>;
+  const done = plan.steps.filter((step) => step.status === 'completed').length;
+  const percent = Math.round((done / plan.steps.length) * 100);
+  const finished = done === plan.steps.length;
   return (
     <div
-      className="pipeline-scroll"
+      className={`plan ${finished ? 'plan-finished' : ''}`}
       role="region"
       aria-label={`${title} plan progress`}
-      tabIndex={0}
     >
-      <ol className="pipeline">
+      <div className="plan-meter-row">
+        <div
+          className="plan-meter"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={plan.steps.length}
+          aria-valuenow={done}
+          aria-label="Plan steps completed"
+        >
+          <span style={{ width: `${percent}%` }} />
+        </div>
+        <span className="plan-percent">{percent}%</span>
+      </div>
+      <ol className="plan-steps">
         {plan.steps.map((step, index) => (
           <li
             key={step.id}
-            className={`step step-${step.status}`}
+            className={`plan-step plan-${step.status}`}
+            style={{ '--i': index } as CSSProperties}
             aria-current={step.status === 'running' ? 'step' : undefined}
-            title={`${step.text}: ${step.status}`}
           >
-            <span className="step-bubble" aria-hidden="true">
-              {step.status === 'completed' ? '✓' : step.status === 'running' ? '●' : index + 1}
+            <span className="plan-node" aria-hidden="true">
+              {step.status === 'completed' ? (
+                <svg viewBox="0 0 16 16" width="14" height="14">
+                  <path
+                    d="M3.5 8.5l3 3 6-7"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              ) : step.status === 'running' ? (
+                <span className="plan-spin" />
+              ) : (
+                index + 1
+              )}
             </span>
-            <span>{step.text}</span>
+            <span className="plan-text">{step.text}</span>
+            <span className="plan-state">{stepLabel[step.status] ?? step.status}</span>
             <span className="sr-only">{step.status}</span>
           </li>
         ))}

@@ -6,7 +6,7 @@ export const idSchema = z
   .min(1)
   .max(128)
   .regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/);
-export const stageSchema = z.enum(stageNames);
+export const stageSchema = z.enum([...stageNames, 'resolve']);
 const readable = z.string().trim().min(1).max(20_000);
 const title = z.string().trim().min(1).max(200);
 const webUrl = z

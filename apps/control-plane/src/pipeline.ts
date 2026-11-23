@@ -153,7 +153,10 @@ export class Pipeline {
         rationale: run.approval.reasons.join('\n'),
       });
       await this.notify(updated, ['in-progress'], ['needs-input'], null);
-      await this.startStage(runId, stageNames[stageNames.indexOf(after) + 1]!);
+      await this.startNext(
+        runId,
+        stageNames[stageNames.indexOf(after as (typeof stageNames)[number]) + 1]!,
+      );
       return this.core.get(runId);
     });
   }
@@ -354,10 +357,21 @@ export class Pipeline {
       return;
     }
     await this.closeStage(runId, 'done', report.summary);
-    const next = stageNames[stageNames.indexOf(name) + 1];
+    if (name === 'resolve') {
+      // The branch is current again: either on to the pull request, or back to merging it.
+      if (run.prUrl)
+        await this.finish(
+          runId,
+          run.prUrl,
+          `The factory resolved a merge conflict on the pull request: ${run.prUrl}`,
+        );
+      else await this.startStage(runId, 'pr');
+      return;
+    }
+    const next = stageNames[stageNames.indexOf(name as (typeof stageNames)[number]) + 1];
     if (next) {
       if (await this.gate(runId, name, report)) return;
-      await this.startStage(runId, next);
+      await this.startNext(runId, next);
       return;
     }
     const prUrl =
@@ -367,6 +381,11 @@ export class Pipeline {
       await this.fail(runId, 'The pr stage finished but no pull request was found for the branch.');
       return;
     }
+    await this.finish(runId, prUrl, `The factory opened a pull request: ${prUrl}`);
+  }
+
+  /** Merges when the policy allows, records where the pull request stands, and ends the run. */
+  private async finish(runId: string, prUrl: string, intro: string): Promise<void> {
     const merged = await this.merge(runId, prUrl);
     const prState = await this.github.pullRequestState(prUrl).catch(() => null);
     const finished = this.core.update(runId, (draft) => {
@@ -382,9 +401,74 @@ export class Pipeline {
       finished,
       ['done'],
       ['in-progress'],
-      `The factory opened a pull request: ${prUrl}${merged.note ? `\n\n${merged.note}` : ''}`,
+      `${intro}${merged.note ? `\n\n${merged.note}` : ''}`,
     );
     this.pump();
+  }
+
+  /**
+   * Starts the next stage. Before the pull request, the branch is brought up to date with the
+   * base: a clean rebase is silent, a conflict goes to an agent. Other runs may have merged
+   * while this one was working.
+   */
+  private async startNext(runId: string, next: StageName): Promise<void> {
+    if (next === 'pr' && (await this.conflictsWithBase(runId))) {
+      await this.startStage(runId, 'resolve');
+      return;
+    }
+    await this.startStage(runId, next);
+  }
+
+  private async conflictsWithBase(runId: string): Promise<boolean> {
+    const run = this.core.get(runId);
+    if (!this.repository || !run.worktreePath || !run.baseBranch) return false;
+    try {
+      return (await this.repository.sync(run.worktreePath, run.baseBranch)) === 'conflict';
+    } catch (error) {
+      console.error(`Could not sync ${run.branch} with its base: ${(error as Error).message}`);
+      return false;
+    }
+  }
+
+  /**
+   * A finished run's pull request now conflicts with its base, because another change merged
+   * first. Reopens the branch in a fresh workspace and sends a resolve agent to it.
+   */
+  async resolveConflicts(runId: string): Promise<void> {
+    await this.serial(runId, async () => {
+      const run = this.core.get(runId);
+      if (
+        run.status !== 'done' ||
+        !run.prUrl ||
+        run.prState === 'merged' ||
+        run.prState === 'closed'
+      )
+        return;
+      if (
+        run.stages.filter((stage) => stage.name === 'resolve').length >=
+        this.config.maxStageAttempts
+      )
+        return;
+      this.core.update(runId, (draft) => {
+        draft.status = 'running';
+        draft.statusReason = null;
+      });
+      try {
+        await this.notify(run, ['in-progress'], ['done'], null);
+        const repositoryPath = await this.github.syncRepository(run.repo);
+        const workspace = await this.runtime.createWorkspace(this.core.get(runId), repositoryPath);
+        this.core.update(runId, (draft) => {
+          draft.worktreePath = workspace.worktreePath;
+          draft.workspaceId = workspace.workspaceId;
+        });
+        await this.startStage(runId, 'resolve');
+      } catch (error) {
+        await this.fail(
+          runId,
+          `Could not start resolving the merge conflict: ${(error as Error).message}`,
+        );
+      }
+    });
   }
 
   /**
