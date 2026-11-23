@@ -23,51 +23,13 @@ Add the `factory` label to a GitHub issue (or a Jira ticket). Kiln picks it up, 
 pipeline walks it through six stages. Every stage is a fresh Claude Code agent in a Docker
 container, inside a [Herdr](https://herdr.dev) terminal you can attach to at any time.
 
-```mermaid
-flowchart LR
-    subgraph IN["Intake"]
-        GH["GitHub issues<br/>label: factory"]
-        JR["Jira / other trackers<br/>task providers"]
-        UI1["Paste a URL<br/>in the dashboard"]
-    end
-
-    subgraph CP["Control plane (Node)"]
-        IK["Intake<br/>poll + dedupe"]
-        PL["Pipeline engine<br/>stages, retries, review loops"]
-        PO["Autonomy policy<br/>L0 - L3"]
-        ST[("Run store<br/>JSON on disk")]
-        API["HTTP API + SSE"]
-        MCP["Reporting MCP<br/>:3776"]
-    end
-
-    subgraph RT["Runtime"]
-        HD["Herdr session<br/>worktree + one tab per stage"]
-        AG["Claude Code agent<br/>in Docker"]
-    end
-
-    DB["Dashboard<br/>board - timeline - insights - shell"]
-    PR["Pull request<br/>reviewed, merged by policy"]
-
-    style IN fill:#ffffff08,stroke:#8089a3,stroke-width:2px
-    style CP fill:#ff6a3d14,stroke:#ff6a3d,stroke-width:3px
-    style RT fill:#5cc8ff14,stroke:#2f9fd6,stroke-width:3px
-
-    GH --> IK
-    JR --> IK
-    UI1 --> API
-    IK --> PL
-    API <--> PL
-    PL <--> ST
-    PL --> PO
-    PL -->|"start stage"| HD
-    HD --> AG
-    AG -->|"report_status"| MCP
-    MCP --> PL
-    AG -->|"push + gh pr create"| PR
-    PO -->|"merge or hold"| PR
-    API -->|"events"| DB
-    DB -->|"approve, retry, shell"| API
-```
+<p align="center">
+  <a href="https://htmlpreview.github.io/?https://github.com/eeshdarthvader/af/blob/main/docs/architecture.html">
+    <img src="docs/assets/architecture.svg" alt="Kiln architecture: intake, control plane, runtime" width="900">
+  </a>
+  <br>
+  <sub><a href="https://htmlpreview.github.io/?https://github.com/eeshdarthvader/af/blob/main/docs/architecture.html">Open the interactive version</a>: click any block to see what it does.</sub>
+</p>
 
 | Stage         | What the agent does                                                                          |
 | ------------- | -------------------------------------------------------------------------------------------- |
