@@ -197,3 +197,291 @@ button.danger {
     outline: 3px solid Highlight;
   }
 }
+
+/* Needs you */
+.inbox-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.inbox-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--warn);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.inbox-retry {
+  border-left-color: var(--danger);
+}
+.inbox-look {
+  border-left-color: var(--info);
+}
+.inbox-text {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+.inbox-text p {
+  margin: 2px 0;
+}
+.inbox-kind {
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 650;
+}
+.inbox-title {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 650;
+  text-decoration: none;
+}
+.inbox-title:hover {
+  text-decoration: underline;
+}
+.inbox-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 13px;
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  color: var(--text);
+  background: var(--surface-3);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.button-link:hover {
+  border-color: #ff6a3d88;
+  color: var(--text);
+}
+
+/* Changes */
+.checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+.checks li {
+  padding: 4px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  font-size: 12px;
+}
+.checks a {
+  color: inherit;
+  text-decoration: none;
+}
+.check-mark {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.check-pass .check-mark {
+  background: var(--ok);
+}
+.check-fail .check-mark {
+  background: var(--danger);
+}
+.check-pending .check-mark {
+  background: var(--warn);
+  animation: breathe 1.8s ease-in-out infinite;
+}
+.diff-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.diff-file {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-2);
+  overflow: hidden;
+}
+.diff-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 0;
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: none;
+  font-weight: 500;
+  text-align: left;
+}
+.diff-head:hover:not(:disabled) {
+  transform: none;
+  box-shadow: none;
+  background: var(--surface-2);
+}
+.diff-path {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+}
+.diff-status {
+  color: var(--muted);
+  font-size: 12px;
+}
+.diff-counts {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.diff-add {
+  color: var(--ok);
+}
+.diff-del {
+  color: var(--danger);
+}
+.diff-bar {
+  display: inline-flex;
+  gap: 2px;
+}
+.diff-bar i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--border-strong);
+}
+.diff-bar .bar-add {
+  background: var(--ok);
+}
+.diff-bar .bar-del {
+  background: var(--danger);
+}
+.diff-body {
+  max-height: 420px;
+  overflow: auto;
+  border-top: 1px solid var(--border);
+}
+.diff-body table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.diff-body .no {
+  width: 1%;
+  padding: 0 8px;
+  color: var(--muted);
+  text-align: right;
+  user-select: none;
+  white-space: nowrap;
+}
+.diff-body .code {
+  padding: 0 10px;
+  white-space: pre;
+}
+.line-add {
+  background: #3ddc9714;
+}
+.line-del {
+  background: #ff6b7a14;
+}
+.line-hunk {
+  color: var(--info);
+  background: var(--info-bg);
+}
+.diff-note {
+  margin: 0;
+  padding: 10px 12px;
+}
+@media (forced-colors: active) {
+  .line-add .code {
+    border-left: 3px solid Highlight;
+  }
+  .line-del .code {
+    border-left: 3px dashed ButtonText;
+  }
+}
+
+/* Insights */
+.range-select {
+  display: grid;
+  gap: 4px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.insight-stats > li {
+  display: grid;
+  gap: 2px;
+}
+.insight-stats strong {
+  font-size: 26px;
+  line-height: 1.1;
+}
+.insight-sub {
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.insight-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.insight-table th,
+.insight-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  font-weight: 500;
+}
+.insight-table thead th {
+  color: var(--muted);
+  font-size: 12px;
+}
+.insight-table tbody th {
+  font-weight: 600;
+}
+.insight-bar-cell {
+  width: 34%;
+}
+.insight-bar {
+  display: block;
+  height: 8px;
+  min-width: 2px;
+  border-radius: 4px;
+  background: var(--ember-gradient);
+}
+@media (max-width: 560px) {
+  .hide-small {
+    display: none;
+  }
+}
+
+.diff-list > li,
+.inbox-list > li,
+.checks > li {
+  list-style: none;
+}
+.diff-list > li::marker,
+.inbox-list > li::marker {
+  content: '';
+}

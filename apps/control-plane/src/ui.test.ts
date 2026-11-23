@@ -26,6 +26,7 @@ async function fixture(t: TestContext, uiDirectory: string) {
       reject: unused,
       tail: unused,
       poll: unused,
+      changes: unused,
       intake: () => ({ lastPollAt: null, lastError: null }),
     },
     uiDirectory,

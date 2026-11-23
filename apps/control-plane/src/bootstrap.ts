@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { applications } from './app.ts';
 import { configuration, type Config } from './config.ts';
+import { ChangesService } from './changes.ts';
 import { Core } from './core.ts';
 import { GhCli } from './github/gh.ts';
 import { GitRepository } from './github/git.ts';
@@ -107,11 +108,13 @@ export async function start(config: Config = configuration()): Promise<() => Pro
     const github = new GhCli(join(config.home, 'repos'));
     stage = 'loading task providers';
     const providers = loadProviders(config);
+    const repository = new GitRepository();
     pipeline = new Pipeline(core, runtime, github, config, {
-      repository: new GitRepository(),
+      repository,
       providers: new Map(providers.map((provider) => [provider.name, provider])),
     });
     const engine = pipeline;
+    const changes = new ChangesService(core, github, repository);
     intake = new Intake(core, github, config, (issue) => engine.submit(issue), providers);
     const poller = intake;
     pulls = new PullRequestWatcher(
@@ -147,6 +150,7 @@ export async function start(config: Config = configuration()): Promise<() => Pro
       approve: (runId) => engine.approve(runId),
       reject: (runId, feedback) => engine.reject(runId, feedback),
       tail: (runId) => engine.tail(runId),
+      changes: (runId) => changes.changes(runId),
       poll: async () => {
         await watcher.check();
         return poller.poll();

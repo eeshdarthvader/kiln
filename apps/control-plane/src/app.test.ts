@@ -3,6 +3,7 @@ import { once } from 'node:events';
 import { test, type TestContext } from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { ChangesService } from './changes.ts';
 import { applications } from './app.ts';
 import type { Config } from './config.ts';
 import { Core } from './core.ts';
@@ -16,6 +17,7 @@ async function serve(t: TestContext, overrides: Partial<Config> = {}) {
   const core = new Core(new MemoryRunStore());
   const runtime = new FakeRuntime(config.home);
   const github = new FakeGitHub();
+  const changes = new ChangesService(core, github);
   const pipeline = new Pipeline(core, runtime, github, config, { exitGraceMs: 10, stopDelayMs: 0 });
   let ready = true;
   const apps = applications({
@@ -33,6 +35,7 @@ async function serve(t: TestContext, overrides: Partial<Config> = {}) {
     reject: (id, feedback) => pipeline.reject(id, feedback),
     tail: (id) => pipeline.tail(id),
     poll: async () => [],
+    changes: (id) => changes.changes(id),
     intake: () => ({ lastPollAt: null, lastError: null }),
   });
   await pipeline.start();
@@ -193,4 +196,32 @@ test('the event stream pushes each run change', async (t) => {
   const payload = JSON.parse(/data: (.*)\n/.exec(text)![1]!) as { id: string; plan?: unknown };
   assert.equal(payload.id, run.id);
   assert.equal(payload.plan, undefined, 'events carry summaries only');
+});
+
+test('the changes endpoint parses the pull request diff and reports checks', async (t) => {
+  const { core, github, request } = await serve(t);
+  github.add(issue());
+  const created = await request('/v1/runs', {
+    method: 'POST',
+    body: JSON.stringify({ issueUrl: 'https://github.com/acme/widgets/issues/7' }),
+  });
+  const run = (await created.json()) as { id: string };
+  const empty = (await (await request(`/v1/runs/${run.id}/changes`)).json()) as { source: string };
+  assert.equal(empty.source, 'none');
+
+  github.prDiff = 'diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-old\n+new\n';
+  github.prChecks = [{ name: 'test', state: 'pass' }];
+  core.update(run.id, (draft) => void (draft.prUrl = 'https://github.com/acme/widgets/pull/9'));
+  const body = (await (await request(`/v1/runs/${run.id}/changes`)).json()) as {
+    source: string;
+    files: Array<{ path: string; additions: number; deletions: number }>;
+    checks: Array<{ name: string; state: string }>;
+  };
+  assert.equal(body.source, 'pull_request');
+  assert.deepEqual(
+    body.files.map((file) => [file.path, file.additions, file.deletions]),
+    [['a.ts', 1, 1]],
+  );
+  assert.deepEqual(body.checks, [{ name: 'test', state: 'pass' }]);
+  assert.equal((await request('/v1/runs/missing/changes')).status, 404);
 });

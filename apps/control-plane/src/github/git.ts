@@ -20,6 +20,11 @@ export class GitRepository implements Repository {
     }
   }
 
+  async patch(worktree: string, base: string): Promise<string> {
+    const mergeBase = (await this.run('git', ['-C', worktree, 'merge-base', base, 'HEAD'])).trim();
+    return this.run('git', ['-C', worktree, 'diff', '--no-color', '--no-renames', mergeBase]);
+  }
+
   async sync(worktree: string, base: string): Promise<'current' | 'rebased' | 'conflict'> {
     await this.run('git', ['-C', worktree, 'fetch', 'origin', base]);
     const behind = Number(
