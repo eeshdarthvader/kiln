@@ -35,7 +35,7 @@ export class Core extends EventEmitter<{
   }
 
   create(issue: Issue): Run {
-    const existing = this.findByIssue(issue.repo, issue.number);
+    const existing = this.findByIssue(issue.repo, issue.number, issue.ticket?.key);
     if (existing) return existing;
     const now = new Date().toISOString();
     const run: Run = {
@@ -43,8 +43,9 @@ export class Core extends EventEmitter<{
       repo: issue.repo,
       issueNumber: issue.number,
       issueUrl: issue.url,
+      ...(issue.ticket ? { ticket: issue.ticket } : {}),
       title: issue.title,
-      branch: branchName(issue.number, issue.title),
+      branch: branchName(issue.ticket?.key ?? issue.number, issue.title),
       baseBranch: null,
       worktreePath: null,
       workspaceId: null,
@@ -68,10 +69,13 @@ export class Core extends EventEmitter<{
   }
 
   /** The newest run for an issue, whatever its state. */
-  findByIssue(repo: string, issueNumber: number): Run | undefined {
+  findByIssue(repo: string, issueNumber: number, ticketKey?: string): Run | undefined {
     const runs = [...this.records.values()]
       .map(({ run }) => run)
-      .filter((run) => run.repo === repo && run.issueNumber === issueNumber)
+      .filter(
+        (run) =>
+          run.repo === repo && run.issueNumber === issueNumber && run.ticket?.key === ticketKey,
+      )
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return runs[0] && structuredClone(runs[0]);
   }

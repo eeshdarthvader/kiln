@@ -139,10 +139,64 @@ Everything is set through environment variables; [`.env.example`](.env.example) 
 | `FACTORY_AGENT_IMAGE`    | `localhost/factory-agent:latest`   | Agent container image                          |
 | `FACTORY_MCP_PUBLIC_URL` | `http://host.docker.internal:3776` | How containers reach the reporting endpoint    |
 | `FACTORY_API_TOKEN`      | unset                              | Require a bearer token on the API              |
+| `FACTORY_TASK_PROVIDERS` | `<home>/providers.json` if present | External task trackers (Jira, ...)             |
+| `FACTORY_TERMINAL`       | `on`                               | Web terminal in the dashboard; `off` disables  |
+| `FACTORY_TERMINAL_SHELL` | `$SHELL`                           | Shell the web terminal starts                  |
 
 On Linux, containers do not resolve `host.docker.internal` by default: set
 `FACTORY_AGENT_DOCKER_ARGS=--add-host=host.docker.internal:host-gateway` and
 `FACTORY_MCP_HOST=0.0.0.0` (or the Docker bridge address).
+
+## Task providers: Jira and other trackers
+
+GitHub issues are not the only way in. A _task provider_ watches an external tracker for the same
+`FACTORY_LABEL`, starts a run for each labelled ticket, and mirrors state back with the same
+`factory:<state>` labels and comments (questions, the pull request link). Code is always built in a
+GitHub repository, so each provider names the repository its tickets belong to.
+
+Describe providers in `~/.factory/providers.json` (or the file named by `FACTORY_TASK_PROVIDERS`).
+Secrets are never in the file: it names the environment variable that holds the token.
+
+```json
+{
+  "providers": [
+    {
+      "name": "jira",
+      "type": "jira",
+      "baseUrl": "https://acme.atlassian.net",
+      "email": "bot@acme.com",
+      "tokenEnv": "JIRA_API_TOKEN",
+      "repo": "acme/widgets",
+      "repos": { "OPS": "acme/ops" },
+      "jql": "project in (PROJ, OPS)"
+    },
+    {
+      "name": "bridge",
+      "type": "command",
+      "command": ["node", "/path/to/bridge.mjs"],
+      "repo": "acme/widgets"
+    }
+  ]
+}
+```
+
+- **`jira`** uses Jira Cloud's REST API with an API token. `repos` maps a Jira project key to a
+  repository and `jql` narrows the label search. Branches are named `factory/<key>-<slug>` and pull
+  requests name the ticket instead of `Closes #N`.
+- **`command`** reaches any tracker that has labels and comments through an executable you write:
+  `list <label>` and `get <key>` print ticket JSON (`{ key, title, body, url, labels, repo?, state? }`),
+  `relabel <key> <add,...> <remove,...>` edits labels, and `comment <key>` reads the comment on stdin.
+  Add `urlPattern` (first group = ticket key) to let people paste its ticket URLs into "Add issue".
+
+## Web terminal
+
+Each run's page has a **Shell** panel: a shell on the factory host, opened in the run's worktree,
+for fixing things while the agent works (or after it stops). It needs `python3` on the host.
+
+It is a remote shell, so it is guarded: the dashboard first asks the API (which enforces
+`FACTORY_API_TOKEN`) for a one-time ticket valid for 30 seconds, the WebSocket refuses any `Host` or
+`Origin` that is not loopback, and at most four shells are open at once. Set `FACTORY_TERMINAL=off`
+to remove it.
 
 ## Security
 
@@ -156,6 +210,8 @@ On Linux, containers do not resolve `host.docker.internal` by default: set
   contractor, and review every pull request. At the default `L1` the factory only opens drafts and never merges;
   `L2` and `L3` merge on their own, so set them only where branch protection and required checks
   stand behind them.
+- The web terminal is a shell as your user. Keep the dashboard on loopback and set
+  `FACTORY_API_TOKEN` if other people share the machine.
 - The dashboard and API listen on `127.0.0.1`. The reporting endpoint has no authentication
   beyond unguessable run IDs; keep `FACTORY_MCP_HOST` on loopback unless you have to change it.
 

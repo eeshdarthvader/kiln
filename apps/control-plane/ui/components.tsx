@@ -1,4 +1,14 @@
-import { useEffect, useId, useRef, type CSSProperties, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import ReactMarkdown from 'react-markdown';
 import type { Plan } from './types';
 
@@ -157,6 +167,10 @@ export function Modal({
         event.preventDefault();
         onClose();
       }}
+      onMouseDown={(event) => {
+        // A press on the backdrop (the dialog element itself, outside its content) closes it.
+        if (event.target === event.currentTarget) onClose();
+      }}
     >
       <header className="modal-heading">
         <h2 id={titleId}>{title}</h2>
@@ -166,5 +180,113 @@ export function Modal({
       </header>
       {children}
     </dialog>
+  );
+}
+
+interface Toast {
+  id: number;
+  text: string;
+  tone: 'ok' | 'error';
+}
+const ToastContext = createContext<(text: string, tone?: Toast['tone']) => void>(() => {});
+export const useToast = () => useContext(ToastContext);
+
+/** Short confirmations and failures that do not need the page's attention. */
+export function ToastProvider({ children }: { children: ReactNode }) {
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const next = useRef(0);
+  const dismiss = useCallback(
+    (id: number) => setToasts((items) => items.filter((item) => item.id !== id)),
+    [],
+  );
+  const push = useCallback(
+    (text: string, tone: Toast['tone'] = 'ok') => {
+      const id = next.current++;
+      setToasts((items) => [...items.slice(-3), { id, text, tone }]);
+      setTimeout(() => dismiss(id), tone === 'error' ? 9000 : 4500);
+    },
+    [dismiss],
+  );
+  return (
+    <ToastContext.Provider value={push}>
+      {children}
+      <div className="toasts" role="region" aria-label="Notifications">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`toast toast-${toast.tone}`}
+            role={toast.tone === 'error' ? 'alert' : 'status'}
+          >
+            <span>{toast.text}</span>
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => dismiss(toast.id)}
+              aria-label={`Dismiss: ${toast.text}`}
+            >
+              Dismiss
+            </button>
+          </div>
+        ))}
+      </div>
+    </ToastContext.Provider>
+  );
+}
+
+export function CopyButton({ value, label }: { value: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  const toast = useToast();
+  return (
+    <button
+      type="button"
+      className="copy-button"
+      aria-label={copied ? `${label} copied` : `Copy ${label}`}
+      onClick={() => {
+        navigator.clipboard
+          .writeText(value)
+          .then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1800);
+          })
+          .catch(() => toast(`Could not copy the ${label}. Select it and copy by hand.`, 'error'));
+      }}
+    >
+      {copied ? 'Copied' : 'Copy'}
+    </button>
+  );
+}
+
+export function ConfirmDialog({
+  title,
+  confirm,
+  onConfirm,
+  onClose,
+  children,
+}: {
+  title: string;
+  confirm: string;
+  onConfirm: () => void;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Modal title={title} onClose={onClose}>
+      {children}
+      <div className="form-actions">
+        <button type="button" className="secondary" autoFocus onClick={onClose}>
+          Keep going
+        </button>
+        <button
+          type="button"
+          className="danger"
+          onClick={() => {
+            onClose();
+            onConfirm();
+          }}
+        >
+          {confirm}
+        </button>
+      </div>
+    </Modal>
   );
 }

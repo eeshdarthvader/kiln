@@ -7,6 +7,7 @@ import { applications } from './app.ts';
 import type { Config } from './config.ts';
 import { Core } from './core.ts';
 import { Pipeline } from './pipeline.ts';
+import { parseIssueUrl } from './validation.ts';
 import { MemoryRunStore } from './store.ts';
 import { FakeGitHub, FakeRuntime, eventually, issue, testConfig } from './testing.ts';
 
@@ -21,7 +22,10 @@ async function serve(t: TestContext, overrides: Partial<Config> = {}) {
     core,
     config,
     ready: () => ready,
-    issue: (repo, number) => github.issue(repo, number),
+    resolve: async (url) => {
+      const { repo, number } = parseIssueUrl(url);
+      return github.issue(repo, number);
+    },
     submit: (value) => pipeline.submit(value),
     retry: (id) => pipeline.retry(id),
     cancel: (id) => pipeline.cancel(id),

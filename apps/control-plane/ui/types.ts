@@ -14,6 +14,8 @@ export interface FactoryInfo {
   pollSeconds: number;
   maxRuns: number;
   herdrSession: string;
+  providers: string[];
+  terminal: boolean;
   lastPollAt: string | null;
   lastError: string | null;
 }

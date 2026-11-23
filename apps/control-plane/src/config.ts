@@ -27,6 +27,9 @@ export interface Config {
   /** Test hook: run this host command in the pane instead of the agent container. */
   agentCommand?: string;
   agentModel?: string;
+  /** Serve a host shell over a WebSocket for the dashboard's terminal. */
+  terminal: boolean;
+  terminalShell: string;
 }
 
 function integer(
@@ -119,6 +122,8 @@ export function configuration(env: NodeJS.ProcessEnv = process.env): Config {
     agentImage: env.FACTORY_AGENT_IMAGE ?? 'localhost/factory-agent:latest',
     ...(env.FACTORY_AGENT_DOCKER_ARGS ? { agentDockerArgs: env.FACTORY_AGENT_DOCKER_ARGS } : {}),
     ...(env.FACTORY_AGENT_COMMAND ? { agentCommand: env.FACTORY_AGENT_COMMAND } : {}),
+    terminal: !['off', 'false', '0'].includes((env.FACTORY_TERMINAL ?? 'on').toLowerCase()),
+    terminalShell: env.FACTORY_TERMINAL_SHELL ?? env.SHELL ?? '/bin/sh',
     ...(env.FACTORY_AGENT_MODEL ? { agentModel: env.FACTORY_AGENT_MODEL } : {}),
   };
 }

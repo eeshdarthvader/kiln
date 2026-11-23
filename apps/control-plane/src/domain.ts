@@ -82,8 +82,14 @@ export type AttachmentInput =
   | { kind: 'context_reference'; title: string; url: string; description?: string };
 export type Attachment = AttachmentInput & { id: string; stage: StageName; createdAt: string };
 
+/** A ticket in an external tracker (Jira, ...) that a run was started from. */
+export interface Ticket {
+  provider: string;
+  key: string;
+}
+
 export interface Issue {
-  /** `owner/name`. */
+  /** `owner/name`: the GitHub repository the work happens in. */
   repo: string;
   number: number;
   title: string;
@@ -91,6 +97,8 @@ export interface Issue {
   url: string;
   labels: string[];
   state: 'open' | 'closed';
+  /** Set when the issue lives in an external tracker rather than on GitHub. */
+  ticket?: Ticket;
 }
 
 /** A human decision the run is waiting for, raised by the autonomy policy. */
@@ -124,6 +132,8 @@ export interface Run {
   repo: string;
   issueNumber: number;
   issueUrl: string;
+  /** Set when the run came from an external tracker; its comments and labels go there. */
+  ticket?: Ticket;
   title: string;
   branch: string;
   baseBranch: string | null;
@@ -176,14 +186,14 @@ export const activeStage = (run: Pick<Run, 'stages'>): StageRecord | undefined =
 export const isTerminal = (status: RunStatus) =>
   status === 'done' || status === 'failed' || status === 'cancelled';
 
-export function branchName(issueNumber: number, title: string): string {
+export function branchName(issueRef: number | string, title: string): string {
   const slug = title
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 40)
     .replace(/-+$/, '');
-  return `factory/${issueNumber}${slug ? `-${slug}` : ''}`;
+  return `factory/${String(issueRef).toLowerCase()}${slug ? `-${slug}` : ''}`;
 }
 
 function canonical(value: unknown): unknown {

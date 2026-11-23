@@ -5,8 +5,9 @@ import type { Core } from './core.ts';
 import { FactoryError, type Issue, type Run, type StageName } from './domain.ts';
 import { handleError } from './http.ts';
 import { handleMcp } from './mcp.ts';
+import type { TerminalService } from './terminal.ts';
 import { mountUi } from './ui.ts';
-import { newRunSchema, parse, parseIssueUrl, rejectSchema } from './validation.ts';
+import { newRunSchema, parse, rejectSchema } from './validation.ts';
 
 function authorized(actual: string | undefined, token: string): boolean {
   const expected = Buffer.from(`Bearer ${token}`);
@@ -19,7 +20,8 @@ export interface Services {
   core: Core;
   config: Config;
   ready: () => boolean;
-  issue(repo: string, number: number): Promise<Issue>;
+  /** Turns a pasted issue or ticket URL into an issue. */
+  resolve(url: string): Promise<Issue>;
   submit(issue: Issue): Promise<Run>;
   retry(runId: string): Promise<Run>;
   cancel(runId: string): Promise<Run>;
@@ -27,6 +29,9 @@ export interface Services {
   reject(runId: string, feedback: string): Promise<Run>;
   tail(runId: string): Promise<{ stage: StageName | null; text: string }>;
   poll(): Promise<Run[]>;
+  terminal?: TerminalService;
+  /** Names of the configured external task providers. */
+  providers?: () => string[];
   intake(): { lastPollAt: string | null; lastError: string | null };
 }
 
@@ -61,14 +66,27 @@ export function applications(services: Services, uiDirectory?: string) {
       pollSeconds: config.pollSeconds,
       maxRuns: config.maxRuns,
       herdrSession: config.herdrSession,
+      providers: services.providers?.() ?? [],
+      terminal: config.terminal,
       ...services.intake(),
     }),
   );
   app.post('/v1/poll', async (_req, res) => res.json({ started: await services.poll() }));
+  app.post('/v1/terminal/tickets', (req, res) => {
+    if (!services.terminal)
+      throw new FactoryError(
+        'The web terminal is disabled (FACTORY_TERMINAL=off).',
+        404,
+        'TERMINAL_OFF',
+      );
+    const runId = typeof req.body?.runId === 'string' ? req.body.runId : undefined;
+    if (runId !== undefined) core.get(runId);
+    res.status(201).json(services.terminal.issueTicket(runId));
+  });
   app.get('/v1/runs', (_req, res) => res.json({ runs: core.list() }));
   app.post('/v1/runs', async (req, res) => {
-    const { repo, number } = parseIssueUrl(parse(newRunSchema, req.body).issueUrl);
-    res.status(202).json(await services.submit(await services.issue(repo, number)));
+    const { issueUrl } = parse(newRunSchema, req.body);
+    res.status(202).json(await services.submit(await services.resolve(issueUrl)));
   });
   app.get('/v1/runs/:id', (req, res) => {
     res.set('Cache-Control', 'no-store').json(core.get(req.params.id));

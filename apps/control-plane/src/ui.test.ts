@@ -18,7 +18,7 @@ async function fixture(t: TestContext, uiDirectory: string) {
       core: new Core(new MemoryRunStore()),
       config: testConfig({ apiToken: 'test-secret' }),
       ready: () => true,
-      issue: unused,
+      resolve: unused,
       submit: unused,
       retry: unused,
       cancel: unused,
