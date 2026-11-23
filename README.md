@@ -1,6 +1,8 @@
 <p align="center">
-  <img src="docs/assets/kiln-banner.gif" alt="Kiln: GitHub issues in, pull requests out" width="900">
+  <img src="docs/assets/kiln-logo.svg" alt="Kiln" width="140" height="140">
 </p>
+
+<h1 align="center">Kiln</h1>
 
 <p align="center">
   <b>Label an issue. Get a reviewed, merged change.</b><br>
