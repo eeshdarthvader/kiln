@@ -38,6 +38,8 @@ export interface GitHub {
   pullRequestState(prUrl: string): Promise<PrState>;
   /** Marks the pull request ready and merges it, or queues it to merge once checks pass. */
   mergePullRequest(prUrl: string): Promise<void>;
+  /** True when GitHub reports the pull request cannot merge because it conflicts with its base. */
+  hasConflicts(prUrl: string): Promise<boolean>;
   /** Clones the repository on first use, fetches afterwards, and returns the local path. */
   syncRepository(repo: string): Promise<string>;
 }
@@ -48,4 +50,6 @@ export interface Repository {
   readFile(worktree: string, ref: string, path: string): Promise<string | null>;
   /** Files changed on the worktree's branch since it left `base`. */
   changes(worktree: string, base: string): Promise<Change[]>;
+  /** Brings the branch up to date with `origin/<base>`: a clean rebase, or the conflict left for an agent. */
+  sync(worktree: string, base: string): Promise<'current' | 'rebased' | 'conflict'>;
 }

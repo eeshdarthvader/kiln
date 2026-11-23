@@ -98,6 +98,11 @@ export class FakeGitHub implements GitHub {
   /** What `pullRequestState` answers for a pull request URL; draft until told otherwise. */
   readonly prStates = new Map<string, PrState>();
   mergeError: string | null = null;
+  /** Pull request URLs that GitHub reports as conflicting. */
+  readonly conflicting = new Set<string>();
+  async hasConflicts(prUrl: string) {
+    return this.conflicting.has(prUrl);
+  }
   add(value: Issue) {
     this.issues.set(`${value.repo}#${value.number}`, structuredClone(value));
     return value;
@@ -151,6 +156,13 @@ export class FakeRepository implements Repository {
   diff: Change[] = [];
   failingRead = false;
   failingDiff = false;
+  /** What `sync` answers: the branch is current, rebased cleanly, or conflicts with its base. */
+  syncResult: 'current' | 'rebased' | 'conflict' = 'current';
+  readonly synced: string[] = [];
+  async sync(worktree: string) {
+    this.synced.push(worktree);
+    return this.syncResult;
+  }
   async readFile() {
     if (this.failingRead) throw new Error('git is broken');
     return this.policy;
