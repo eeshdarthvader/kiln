@@ -15,7 +15,7 @@ import {
   type StageStatus,
 } from './domain.ts';
 import { criticalReasons, oneWayDecisions, parsePolicy, policyPath } from './policy.ts';
-import type { AgentRuntime, GitHub, Repository } from './ports.ts';
+import type { AgentRuntime, GitHub, Repository, TaskProvider } from './ports.ts';
 import { issueFile, stagePrompt, type PromptBuilder } from './prompts.ts';
 
 /** A review stage that asks for changes sends the run back to the stage it reviewed. */
@@ -26,6 +26,8 @@ const reviews: Partial<Record<StageName, StageName>> = {
 
 export interface PipelineOptions {
   prompt?: PromptBuilder;
+  /** External trackers, by name, for runs that started from a ticket. */
+  providers?: ReadonlyMap<string, TaskProvider>;
   /** How long to wait for a late report after an agent's pane exits. */
   exitGraceMs?: number;
   /** Reads worktrees for the autonomy policy. Without it every run uses the default autonomy. */
@@ -51,6 +53,7 @@ export class Pipeline {
   private readonly timers = new Map<string, NodeJS.Timeout>();
   private readonly starting = new Set<string>();
   private detach: Array<() => void> = [];
+  private readonly providers: ReadonlyMap<string, TaskProvider>;
 
   constructor(
     core: Core,
@@ -64,6 +67,7 @@ export class Pipeline {
     this.github = github;
     this.config = config;
     this.prompt = options.prompt ?? stagePrompt;
+    this.providers = options.providers ?? new Map();
     this.repository = options.repository;
     this.exitGraceMs = options.exitGraceMs ?? 3000;
     this.stopDelayMs = options.stopDelayMs ?? 1500;
@@ -91,7 +95,7 @@ export class Pipeline {
   /** Queues a run for an issue, or restarts the issue's stopped run. */
   async submit(issue: Issue): Promise<Run> {
     if (issue.state !== 'open') throw new FactoryError('The issue is closed.', 409);
-    const existing = this.core.findByIssue(issue.repo, issue.number);
+    const existing = this.core.findByIssue(issue.repo, issue.number, issue.ticket?.key);
     const run =
       existing && existing.status !== 'done'
         ? existing
@@ -249,7 +253,9 @@ export class Pipeline {
     });
     try {
       await this.notify(run, ['in-progress'], ['', 'needs-input', 'failed'], null);
-      const issue = await this.github.issue(run.repo, run.issueNumber);
+      const issue = run.ticket
+        ? await this.provider(run.ticket.provider).get(run.ticket.key)
+        : await this.github.issue(run.repo, run.issueNumber);
       const baseBranch = await this.github.defaultBranch(run.repo);
       const repositoryPath = await this.github.syncRepository(run.repo);
       run = this.core.update(runId, (draft) => {
@@ -679,12 +685,25 @@ export class Pipeline {
     comment: string | null,
   ): Promise<void> {
     const name = (state: string) => (state ? `${this.config.label}:${state}` : this.config.label);
+    const where = run.ticket ? run.ticket.key : `${run.repo}#${run.issueNumber}`;
     try {
+      if (run.ticket) {
+        const tracker = this.provider(run.ticket.provider);
+        await tracker.relabel(run.ticket.key, add.map(name), remove.map(name));
+        if (comment) await tracker.comment(run.ticket.key, comment);
+        return;
+      }
       await this.github.relabel(run.repo, run.issueNumber, add.map(name), remove.map(name));
       if (comment) await this.github.comment(run.repo, run.issueNumber, comment);
     } catch (error) {
-      console.error(`Could not update ${run.repo}#${run.issueNumber}: ${(error as Error).message}`);
+      console.error(`Could not update ${where}: ${(error as Error).message}`);
     }
+  }
+
+  private provider(name: string): TaskProvider {
+    const provider = this.providers.get(name);
+    if (!provider) throw new Error(`The task provider "${name}" is not configured.`);
+    return provider;
   }
 
   private serial<T>(runId: string, task: () => Promise<T>): Promise<T> {

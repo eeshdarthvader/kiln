@@ -2,8 +2,18 @@ import { useEffect, useState } from 'react';
 import { errorText, runPath, type Api } from './api';
 import { AttachmentPreview } from './AttachmentPreview';
 import { Attachments } from './Attachments';
-import { DateLabel, Markdown, PlanProgress, Status, safeUrl } from './components';
+import {
+  ConfirmDialog,
+  CopyButton,
+  DateLabel,
+  Markdown,
+  PlanProgress,
+  Status,
+  safeUrl,
+  useToast,
+} from './components';
 import { issueLabel, prLabel } from './RunList';
+import { WebTerminal } from './WebTerminal';
 import type { Run, StageRecord } from './types';
 
 function duration(stage: StageRecord): string {
@@ -57,11 +67,13 @@ export function RunDetail({
   run,
   api,
   herdrSession,
+  terminal,
   onUpdate,
 }: {
   run: Run;
   api: Api;
   herdrSession: string;
+  terminal: boolean;
   onUpdate: (run: Run) => void;
 }) {
   // Older finished runs were stored with every step still pending; a done run did them all.
@@ -74,12 +86,17 @@ export function RunDetail({
       : run.plan;
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const toast = useToast();
   const [attachmentId, setAttachmentId] = useState<string | null>(null);
   const act = (action: 'retry' | 'cancel') => {
     setBusy(true);
     setError('');
     api<Run>(`${runPath(run.id)}/${action}`, 'POST')
-      .then(onUpdate)
+      .then((updated) => {
+        onUpdate(updated);
+        toast(action === 'retry' ? 'Run restarted.' : 'Run cancelled.');
+      })
       .catch((reason: unknown) => setError(errorText(reason)))
       .finally(() => setBusy(false));
   };
@@ -91,6 +108,9 @@ export function RunDetail({
       .then((updated) => {
         setFeedback('');
         onUpdate(updated);
+        toast(
+          action === 'approve' ? 'Approved. The run continues.' : 'Sent back with your feedback.',
+        );
       })
       .catch((reason: unknown) => setError(errorText(reason)))
       .finally(() => setBusy(false));
@@ -139,13 +159,26 @@ export function RunDetail({
               type="button"
               className="secondary"
               disabled={busy}
-              onClick={() => act('cancel')}
+              onClick={() => setConfirmCancel(true)}
             >
               Cancel run
             </button>
           )}
         </div>
       </header>
+      {confirmCancel && (
+        <ConfirmDialog
+          title="Cancel this run?"
+          confirm="Cancel run"
+          onClose={() => setConfirmCancel(false)}
+          onConfirm={() => act('cancel')}
+        >
+          <p className="muted">
+            The running agent stops and its workspace is closed. Work already pushed stays on the
+            branch, and you can start the run again later.
+          </p>
+        </ConfirmDialog>
+      )}
       {error && (
         <p className="error-notice" role="alert">
           {error}
@@ -204,12 +237,12 @@ export function RunDetail({
         <div className="workspace-main">
           <section className="panel">
             <div className="section-heading">
-              <h2>
+              <h2 id="stages-heading">
                 Stages <span className="count">{run.stages.length}</span>
               </h2>
             </div>
             {run.stages.length ? (
-              <ol className="stage-list">
+              <ol className="stage-list" aria-labelledby="stages-heading">
                 {run.stages.map((stage, index) => (
                   <li key={index} className={`stage stage-${stage.status}`}>
                     <div className="stage-heading">
@@ -241,6 +274,7 @@ export function RunDetail({
             <PlanProgress plan={finishedPlan} title={run.title} />
           </section>
           <Terminal run={run} api={api} />
+          {terminal && <WebTerminal api={api} runId={run.id} />}
           <Attachments attachments={run.attachments} onOpen={(item) => setAttachmentId(item.id)} />
         </div>
         <aside className="workspace-aside">
@@ -250,7 +284,9 @@ export function RunDetail({
               <dt>Repository</dt>
               <dd>{run.repo}</dd>
               <dt>Branch</dt>
-              <dd className="path">{run.branch}</dd>
+              <dd className="path">
+                {run.branch} <CopyButton value={run.branch} label="branch name" />
+              </dd>
               <dt>Base</dt>
               <dd className="path">{run.baseBranch ?? 'Not resolved yet'}</dd>
               <dt>Autonomy</dt>
@@ -277,7 +313,9 @@ export function RunDetail({
                 <DateLabel date={run.createdAt} />
               </dd>
               <dt>Run ID</dt>
-              <dd className="path">{run.id}</dd>
+              <dd className="path">
+                {run.id} <CopyButton value={run.id} label="run ID" />
+              </dd>
             </dl>
           </section>
           <section className="panel">
@@ -285,7 +323,10 @@ export function RunDetail({
             <p className="muted">
               Each stage runs in its own tab of this run’s Herdr workspace. Attach from a terminal:
             </p>
-            <pre className="artifact-source">herdr --session {herdrSession}</pre>
+            <pre className="artifact-source" tabIndex={0} aria-label="Herdr attach command">
+              herdr --session {herdrSession}
+            </pre>
+            <CopyButton value={`herdr --session ${herdrSession}`} label="attach command" />
           </section>
         </aside>
       </div>

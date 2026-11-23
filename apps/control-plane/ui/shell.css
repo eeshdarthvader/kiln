@@ -1,0 +1,199 @@
+/* App shell, accessibility and interaction layer. Loaded after styles.css. */
+.skip-link {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 100;
+  padding: 10px 16px;
+  border-radius: 9px;
+  color: #1a0c06;
+  background: var(--ember-2);
+  font-weight: 650;
+  transform: translateY(-160%);
+  transition: transform 0.2s var(--ease);
+}
+.skip-link:focus {
+  transform: none;
+  color: #1a0c06;
+}
+main:focus {
+  outline: none;
+}
+.overview-stats {
+  margin: 0 0 24px;
+  padding: 0;
+  list-style: none;
+}
+.overview-stats > li strong {
+  color: var(--text);
+}
+
+/* Sidebar */
+.side-nav {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.run-nav {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.run-filter {
+  margin: 10px 0 6px;
+}
+.run-filter input {
+  width: 100%;
+  padding: 8px 11px;
+  font-size: 13px;
+}
+.run-empty {
+  padding: 8px 4px;
+}
+.menu-button {
+  display: none;
+}
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: #04060bcc;
+}
+
+/* Interaction helpers */
+button.danger {
+  color: #fff;
+  background: linear-gradient(135deg, #ff6b7a, #d6304a);
+  box-shadow: 0 6px 22px -8px #ff6b7a99;
+}
+.copy-button {
+  padding: 2px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--text-2);
+  background: var(--surface-2);
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 550;
+}
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+.check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--ember);
+}
+.toasts {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: min(380px, calc(100vw - 36px));
+}
+.toast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 14px;
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--ok);
+  border-radius: 10px;
+  color: var(--text);
+  background: var(--surface-2);
+  box-shadow: 0 16px 40px -12px #000c;
+  animation: toast-in 0.3s var(--ease) both;
+}
+.toast-error {
+  border-left-color: var(--danger);
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+.modal-heading + * {
+  margin-top: 0;
+}
+
+/* Touch targets and small screens */
+@media (pointer: coarse) {
+  button,
+  .nav-item,
+  .run-nav a,
+  input:not([type='checkbox']) {
+    min-height: 44px;
+  }
+}
+@media (max-width: 760px) {
+  .menu-button {
+    display: inline-flex;
+  }
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 50;
+    flex-direction: column;
+    align-items: stretch;
+    width: min(320px, 86vw);
+    height: 100dvh;
+    padding: 24px 18px;
+    border-right: 1px solid var(--border);
+    border-bottom: 0;
+    transform: translateX(-102%);
+    visibility: hidden;
+    transition:
+      transform 0.28s var(--ease),
+      visibility 0s 0.28s;
+  }
+  .sidebar-open {
+    transform: none;
+    visibility: visible;
+    transition: transform 0.28s var(--ease);
+  }
+  .sidebar .brand {
+    margin: 0 0 20px;
+  }
+  .sidebar .sidebar-bottom {
+    display: block;
+  }
+  .connection-state {
+    font-size: 12px;
+  }
+  .toasts {
+    left: 18px;
+    right: 18px;
+    max-width: none;
+  }
+}
+
+/* Windows high contrast and similar */
+@media (forced-colors: active) {
+  button,
+  .status,
+  .label-badge,
+  .toast,
+  .panel {
+    border: 1px solid ButtonText;
+  }
+  .run-dot {
+    forced-color-adjust: none;
+  }
+  :is(a, button, input, [tabindex]):focus-visible {
+    outline: 3px solid Highlight;
+  }
+}
