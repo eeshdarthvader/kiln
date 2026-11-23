@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { errorText, runPath, type Api } from './api';
+import { Changes } from './Changes';
 import { AttachmentPreview } from './AttachmentPreview';
 import { Attachments } from './Attachments';
 import {
@@ -273,6 +274,7 @@ export function RunDetail({
             </div>
             <PlanProgress plan={finishedPlan} title={run.title} />
           </section>
+          <Changes run={run} api={api} />
           <Terminal run={run} api={api} />
           {terminal && <WebTerminal api={api} runId={run.id} />}
           <Attachments attachments={run.attachments} onOpen={(item) => setAttachmentId(item.id)} />

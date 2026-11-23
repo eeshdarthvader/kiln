@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { configuration, type Config } from './config.ts';
 import type { Change, Issue, PrState, Run, StageName } from './domain.ts';
+import type { Check } from './changes.ts';
 import type { AgentRuntime, GitHub, Repository } from './ports.ts';
 
 /** Shared fakes for tests. Nothing here talks to Herdr, Docker or GitHub. */
@@ -142,6 +143,15 @@ export class FakeGitHub implements GitHub {
   async pullRequestState(prUrl: string): Promise<PrState> {
     return this.prStates.get(prUrl) ?? 'draft';
   }
+  /** What `pullRequestDiff` and `pullRequestChecks` answer. */
+  prDiff = '';
+  prChecks: Check[] = [];
+  async pullRequestDiff() {
+    return this.prDiff;
+  }
+  async pullRequestChecks() {
+    return this.prChecks;
+  }
   async syncRepository(repo: string) {
     return `/repos/${repo}`;
   }
@@ -151,6 +161,11 @@ export class FakeGitHub implements GitHub {
 }
 
 export class FakeRepository implements Repository {
+  /** What `patch` answers. */
+  patchText = '';
+  async patch() {
+    return this.patchText;
+  }
   /** The policy file's text on the base branch, or null when the repository has none. */
   policy: string | null = null;
   diff: Change[] = [];

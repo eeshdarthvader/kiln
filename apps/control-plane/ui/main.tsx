@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { AddIssue } from './AddIssue';
 import { createApi, errorText, runPath, subscribe } from './api';
 import { Modal, ToastProvider } from './components';
+import { Insights } from './Insights';
 import { Logo } from './Logo';
 import { RunDetail } from './RunDetail';
 import { RunList, issueRef } from './RunList';
@@ -19,6 +20,8 @@ function selectedFromHash(): string | null {
     return null;
   }
 }
+
+const insightsFromHash = () => window.location.hash === '#/insights';
 
 function ApiAccess({
   currentToken,
@@ -70,6 +73,7 @@ function App() {
   const [factory, setFactory] = useState<FactoryInfo | null>(null);
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [selectedId, setSelectedId] = useState(selectedFromHash);
+  const [insights, setInsights] = useState(insightsFromHash);
   const [detail, setDetail] = useState<Run | null>(null);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState('');
@@ -90,6 +94,7 @@ function App() {
 
   useEffect(() => {
     const change = () => {
+      setInsights(insightsFromHash());
       const nextId = selectedFromHash();
       if (nextId === selectedRef.current) return;
       selectedRef.current = nextId;
@@ -153,9 +158,14 @@ function App() {
 
   const attention = runs.filter((run) => run.status === 'needs_input').length;
   useEffect(() => {
-    const name = selectedId && detail?.id === selectedId ? `${detail.title} · Kiln` : 'Kiln';
+    const name =
+      selectedId && detail?.id === selectedId
+        ? `${detail.title} · Kiln`
+        : insights && !selectedId
+          ? 'Insights · Kiln'
+          : 'Kiln';
     document.title = attention ? `(${attention}) ${name}` : name;
-  }, [selectedId, detail, attention]);
+  }, [selectedId, detail, attention, insights]);
 
   // After navigating, move focus to the new page so keyboard and screen-reader users start there.
   useEffect(() => {
@@ -166,7 +176,7 @@ function App() {
     }
     mainRef.current?.focus({ preventScroll: true });
     window.scrollTo({ top: 0 });
-  }, [selectedId]);
+  }, [selectedId, insights]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -239,6 +249,13 @@ function App() {
           <nav className="side-nav" aria-label="Runs">
             <a className="nav-item" href="#/" aria-current={!selectedId ? 'page' : undefined}>
               All runs <span>{runs.length}</span>
+            </a>
+            <a
+              className="nav-item"
+              href="#/insights"
+              aria-current={insights && !selectedId ? 'page' : undefined}
+            >
+              Insights
             </a>
             {runs.length > 5 && (
               <div className="run-filter">
@@ -318,7 +335,12 @@ function App() {
               </button>
             </div>
           </header>
-          <main id="content" ref={mainRef} tabIndex={-1} key={selectedId ?? 'runs'}>
+          <main
+            id="content"
+            ref={mainRef}
+            tabIndex={-1}
+            key={selectedId ?? (insights ? 'insights' : 'runs')}
+          >
             {listError && (
               <div className="error-notice" role="alert">
                 <p>Could not load runs: {listError}</p>
@@ -360,8 +382,12 @@ function App() {
                   <a href="#/">Back to all runs</a>
                 )}
               </>
+            ) : insights ? (
+              <Insights runs={runs} />
             ) : (
               <RunList
+                api={api}
+                onUpdate={update}
                 runs={runs}
                 factory={factory}
                 onAdd={() => setAdding(true)}

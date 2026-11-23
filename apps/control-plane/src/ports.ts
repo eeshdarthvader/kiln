@@ -1,3 +1,4 @@
+import type { Check } from './changes.ts';
 import type { Change, Issue, PrState, Run, StageName } from './domain.ts';
 
 /** Where agents run. Herdr in production, an in-memory fake in tests. */
@@ -40,6 +41,10 @@ export interface GitHub {
   mergePullRequest(prUrl: string): Promise<void>;
   /** True when GitHub reports the pull request cannot merge because it conflicts with its base. */
   hasConflicts(prUrl: string): Promise<boolean>;
+  /** The pull request's full unified diff. */
+  pullRequestDiff(prUrl: string): Promise<string>;
+  /** CI checks and commit statuses on the pull request's head. */
+  pullRequestChecks(prUrl: string): Promise<Check[]>;
   /** Clones the repository on first use, fetches afterwards, and returns the local path. */
   syncRepository(repo: string): Promise<string>;
 }
@@ -63,6 +68,8 @@ export interface Repository {
   readFile(worktree: string, ref: string, path: string): Promise<string | null>;
   /** Files changed on the worktree's branch since it left `base`. */
   changes(worktree: string, base: string): Promise<Change[]>;
+  /** Unified diff of the worktree (committed or not) against where it left `base`. */
+  patch(worktree: string, base: string): Promise<string>;
   /** Brings the branch up to date with `origin/<base>`: a clean rebase, or the conflict left for an agent. */
   sync(worktree: string, base: string): Promise<'current' | 'rebased' | 'conflict'>;
 }
