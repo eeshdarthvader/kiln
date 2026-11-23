@@ -1,5 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import express from 'express';
+import type { Changes } from './changes.ts';
 import type { Config } from './config.ts';
 import type { Core } from './core.ts';
 import { FactoryError, type Issue, type Run, type StageName } from './domain.ts';
@@ -29,6 +30,7 @@ export interface Services {
   reject(runId: string, feedback: string): Promise<Run>;
   tail(runId: string): Promise<{ stage: StageName | null; text: string }>;
   poll(): Promise<Run[]>;
+  changes(runId: string): Promise<Changes>;
   terminal?: TerminalService;
   /** Names of the configured external task providers. */
   providers?: () => string[];
@@ -93,6 +95,9 @@ export function applications(services: Services, uiDirectory?: string) {
   });
   app.get('/v1/runs/:id/tail', async (req, res) => {
     res.set('Cache-Control', 'no-store').json(await services.tail(req.params.id));
+  });
+  app.get('/v1/runs/:id/changes', async (req, res) => {
+    res.set('Cache-Control', 'no-store').json(await services.changes(req.params.id));
   });
   app.post('/v1/runs/:id/retry', async (req, res) => res.json(await services.retry(req.params.id)));
   app.post('/v1/runs/:id/cancel', async (req, res) =>

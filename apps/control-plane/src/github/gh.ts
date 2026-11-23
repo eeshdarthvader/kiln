@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { FactoryError, type Issue, type PrState } from '../domain.ts';
+import type { Check } from '../changes.ts';
 import type { GitHub } from '../ports.ts';
 
 export type Execute = (command: string, args: string[], input?: string) => Promise<string>;
@@ -175,6 +176,38 @@ export class GhCli implements GitHub {
       '.mergeable',
     ]);
     return output.trim() === 'CONFLICTING';
+  }
+
+  async pullRequestDiff(prUrl: string): Promise<string> {
+    return this.run('gh', ['pr', 'diff', prUrl, '--color', 'never']);
+  }
+
+  async pullRequestChecks(prUrl: string): Promise<Check[]> {
+    const output = await this.run('gh', [
+      'pr',
+      'view',
+      prUrl,
+      '--json',
+      'statusCheckRollup',
+      '--jq',
+      '.statusCheckRollup',
+    ]);
+    const rollup = (JSON.parse(output.trim() || '[]') ?? []) as Array<Record<string, string>>;
+    return rollup.map((item): Check => {
+      const result = (item.conclusion || item.state || '').toUpperCase();
+      const done = item.status === undefined || item.status === 'COMPLETED';
+      const state: Check['state'] = !done
+        ? 'pending'
+        : ['SUCCESS'].includes(result)
+          ? 'pass'
+          : ['NEUTRAL', 'SKIPPED'].includes(result)
+            ? 'skipped'
+            : ['PENDING', 'EXPECTED', ''].includes(result)
+              ? 'pending'
+              : 'fail';
+      const url = item.detailsUrl || item.targetUrl;
+      return { name: item.name || item.context || 'check', state, ...(url ? { url } : {}) };
+    });
   }
 
   async mergePullRequest(prUrl: string): Promise<void> {

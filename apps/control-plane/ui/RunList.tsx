@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { DateLabel, Status } from './components';
+import type { Api } from './api';
+import { Inbox } from './Inbox';
 import { Count } from './Logo';
-import type { FactoryInfo, RunStatus, RunSummary } from './types';
+import type { FactoryInfo, Run, RunStatus, RunSummary } from './types';
 
 const isMerged = (run: RunSummary) => run.status === 'done' && run.prState === 'merged';
 const groups: Array<{ key: string; title: string; match: (run: RunSummary) => boolean }> = [
@@ -76,11 +78,15 @@ function RunRow({ run }: { run: RunSummary }) {
 }
 
 export function RunList({
+  api,
+  onUpdate,
   runs,
   factory,
   onAdd,
   onPoll,
 }: {
+  api: Api;
+  onUpdate: (run: Run) => void;
   runs: RunSummary[];
   factory: FactoryInfo | null;
   onAdd: () => void;
@@ -103,6 +109,7 @@ export function RunList({
           + Add issue
         </button>
       </header>
+      <Inbox runs={runs} api={api} onUpdate={onUpdate} />
       <ul className="overview-stats" aria-label="Run summary">
         <li>
           <strong>
