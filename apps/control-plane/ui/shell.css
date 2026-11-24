@@ -650,3 +650,52 @@ button.danger {
 .steer-history p {
   margin: 0;
 }
+
+.run-group + .run-group {
+  margin-top: 6px;
+}
+.run-group > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--muted, #8b93a7);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 8px;
+}
+.run-group > summary::-webkit-details-marker {
+  display: none;
+}
+.run-group > summary::before {
+  content: '▸';
+  font-size: 0.7rem;
+  transition: transform 0.15s;
+}
+.run-group[open] > summary::before {
+  transform: rotate(90deg);
+}
+.run-group > summary:hover {
+  color: inherit;
+}
+.run-group-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.run-group-count {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+@media (prefers-reduced-motion: reduce) {
+  .run-group > summary::before {
+    transition: none;
+  }
+}
