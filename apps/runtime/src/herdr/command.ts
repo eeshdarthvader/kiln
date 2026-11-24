@@ -1,12 +1,11 @@
 import { basename } from 'node:path';
-import type { StageName } from '../domain.ts';
 
 /** Single-quotes a value for bash. */
 export const quote = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`;
 
 export interface StageLaunch {
   runId: string;
-  stage: StageName;
+  stage: string;
   attempt: number;
   worktreePath: string;
   repositoryPath: string;

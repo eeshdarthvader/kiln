@@ -5,7 +5,6 @@ import type { IncomingMessage, Server } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, type RawData, type WebSocket } from 'ws';
-import { FactoryError } from './domain.ts';
 
 const bridge = fileURLToPath(new URL('./terminal/pty-bridge.py', import.meta.url));
 const ticketLifetimeMs = 30_000;
@@ -132,12 +131,4 @@ export class TerminalService {
     for (const child of this.children) child.kill('SIGKILL');
     for (const ws of this.sockets.clients) ws.terminate();
   }
-}
-
-export function disabledTerminal(): never {
-  throw new FactoryError(
-    'The web terminal is disabled (FACTORY_TERMINAL=off).',
-    404,
-    'TERMINAL_OFF',
-  );
 }

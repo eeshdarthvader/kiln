@@ -107,7 +107,7 @@ The issue shows where the run stands:
 
 ```bash
 npm ci
-make agent-image          # build the agent container (once, and after Dockerfile changes)
+make agent-image          # build the agent container (builds apps/runtime) (once, and after Dockerfile changes)
 cp .env.example .env      # set FACTORY_REPOS and the Claude credential
 make herdr                # terminal 1: the Herdr session the factory drives
 make start                # terminal 2: build the dashboard and start the server
@@ -246,11 +246,11 @@ npm run dev      # server with reload;  npm run dev:ui  for the dashboard on :51
 
 `make smoke` needs `make herdr` running. It uses a local git repository and
 [`scripts/stub-agent.mjs`](scripts/stub-agent.mjs) in place of Docker, Claude and GitHub, so it
-checks the orchestration only. `scripts/herdr-spike.mjs` prints the raw Herdr responses the
+checks the orchestration only. [`../runtime/scripts/herdr-spike.mjs`](../runtime/scripts/herdr-spike.mjs) prints the raw Herdr responses the
 factory depends on; run it after a Herdr upgrade.
 
 Code map: [`src/pipeline.ts`](src/pipeline.ts) is the stage state machine,
-[`src/herdr/`](src/herdr) talks to Herdr, [`src/github/`](src/github) wraps `gh`,
+[`../runtime`](../runtime) (`@factory/runtime`) talks to Herdr and owns the agent image and web terminal, [`src/github/`](src/github) wraps `gh`,
 [`src/core.ts`](src/core.ts) owns run records, [`src/mcp.ts`](src/mcp.ts) is the reporting
 server, and [`ui/`](ui) is the dashboard.
 

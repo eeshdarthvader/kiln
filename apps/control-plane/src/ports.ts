@@ -1,30 +1,7 @@
 import type { Check } from './changes.ts';
-import type { Change, Issue, PrState, Run, StageName } from './domain.ts';
+import type { Change, Issue, PrState } from './domain.ts';
 
-/** Where agents run. Herdr in production, an in-memory fake in tests. */
-export interface AgentRuntime {
-  /** Directory holding a run's hand-off files (issue, plan, reviews, stage prompts). */
-  runDirectory(runId: string): string;
-  /** Creates the run's git worktree and the Herdr workspace that shows it. */
-  createWorkspace(
-    run: Run,
-    repositoryPath: string,
-  ): Promise<{ worktreePath: string; workspaceId: string }>;
-  /** Starts one agent for a stage and returns the pane it runs in. */
-  startStage(
-    run: Run,
-    stage: StageName,
-    attempt: number,
-    prompt: string,
-  ): Promise<{ paneId: string }>;
-  /** Calls back once when the pane's process ends or the pane is closed. */
-  onExit(listener: (paneId: string) => void): () => void;
-  isAlive(paneId: string): Promise<boolean>;
-  tail(paneId: string, lines: number): Promise<string>;
-  stopStage(paneId: string): Promise<void>;
-  removeWorkspace(workspaceId: string): Promise<void>;
-  close(): void;
-}
+export type { AgentRuntime } from '@factory/runtime';
 
 /** GitHub access. The `gh` CLI in production. */
 export interface GitHub {
