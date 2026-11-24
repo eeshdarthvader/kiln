@@ -13,7 +13,8 @@
   <a href="#how-it-works">How it works</a> ·
   <a href="#features">Features</a> ·
   <a href="#quick-start">Quick start</a> ·
-  <a href="apps/control-plane/README.md">Full docs</a> ·
+  <a href="apps/control-plane/README.md">Control plane docs</a> ·
+  <a href="apps/runtime/README.md">Runtime docs</a> ·
   <a href="docs/architecture.html">Interactive diagram</a>
 </p>
 
@@ -21,7 +22,7 @@
 
 ## How it works
 
-Add the `factory` label to a GitHub issue (or a Jira ticket). Kiln picks it up, and a server-driven
+Add the `factory` label to a GitHub, Jira or Linear issue. Kiln picks it up, and a server-driven
 pipeline walks it through six stages. Every stage is a fresh Claude Code agent in a Docker
 container, inside a [Herdr](https://herdr.dev) terminal you can attach to at any time.
 
@@ -119,7 +120,7 @@ worktree. Source: [`ui/`](apps/control-plane/ui).
 
 - **Label to start:** put `factory` on a GitHub issue and a run starts, no clicks.
 - **Paste a URL:** add any issue or ticket from the dashboard.
-- **Task providers:** pull work from Jira, or any tracker with labels and comments, and mirror state back.
+- **Task providers:** pull work from Jira, Linear, or any tracker with labels and comments, and mirror state back.
 - **Status labels:** the issue shows `factory:in-progress`, `:needs-input`, `:failed` and `:done` as the run moves.
 
 **Pipeline**
@@ -176,14 +177,15 @@ npm run dev                                  # control plane at http://127.0.0.1
 
 Set `FACTORY_REPOS=owner/repo`, give the factory a GitHub login (`gh auth login`) and a Claude
 credential (`CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`), then label an issue. Everything
-else is in the [control plane README](apps/control-plane/README.md).
+else is in the [control plane](apps/control-plane/README.md) and [runtime](apps/runtime/README.md)
+READMEs.
 
 ## Repository layout
 
-| Path                                       | What it is                                                          |
-| ------------------------------------------ | ------------------------------------------------------------------- |
-| [`apps/control-plane`](apps/control-plane) | The server and dashboard: intake, pipeline, autonomy policy, API    |
-| [`apps/runtime`](apps/runtime)             | Where agents run: Herdr client, agent container image, web terminal |
+| Path                                                 | What it is                                                          |
+| ---------------------------------------------------- | ------------------------------------------------------------------- |
+| [`apps/control-plane`](apps/control-plane/README.md) | The server and dashboard: intake, pipeline, autonomy policy, API    |
+| [`apps/runtime`](apps/runtime/README.md)             | Where agents run: Herdr client, agent container image, web terminal |
 
 The control plane reaches the runtime only through the `AgentRuntime` interface in
 [`apps/runtime/src/contract.ts`](apps/runtime/src/contract.ts).
