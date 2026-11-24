@@ -22,7 +22,7 @@
 
 ## How it works
 
-Add the `factory` label to a GitHub, Jira or Linear issue. Kiln picks it up, and a server-driven
+Add the `factory` label to a GitHub issue (or a Jira ticket). Kiln picks it up, and a server-driven
 pipeline walks it through six stages. Every stage is a fresh Claude Code agent in a Docker
 container, inside a [Herdr](https://herdr.dev) terminal you can attach to at any time.
 
@@ -123,7 +123,7 @@ worktree. Source: [`ui/`](apps/control-plane/ui).
 
 - **Label to start:** put `factory` on a GitHub issue and a run starts, no clicks.
 - **Paste a URL:** add any issue or ticket from the dashboard.
-- **Task providers:** pull work from Jira, Linear, or any tracker with labels and comments, and mirror state back.
+- **Task providers:** pull work from Jira, or any tracker with labels and comments, and mirror state back.
 - **Status labels:** the issue shows `factory:in-progress`, `:needs-input`, `:failed` and `:done` as the run moves.
 
 **Pipeline**
