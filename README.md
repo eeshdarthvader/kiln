@@ -5,7 +5,7 @@
 <h1 align="center">Kiln</h1>
 
 <p align="center">
-  <b>Label an issue. Get a reviewed, merged change.</b><br>
+  <b>Label an issue. Get a reviewed pull request.</b><br>
   Kiln runs a pipeline of Claude Code agents, each in its own container and terminal, reviews the result, and merges it when your merge policy allows, or holds it for you.
 </p>
 
