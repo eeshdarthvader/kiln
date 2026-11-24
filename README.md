@@ -20,6 +20,10 @@
 
 ---
 
+<p align="center">
+  <img src="docs/assets/screens/home.png" alt="The Kiln dashboard: runs that need you, with approve, run again and open pull request actions" width="900">
+</p>
+
 ## How it works
 
 Add the `factory` label to a GitHub issue (or a Jira ticket). Kiln picks it up, and a server-driven
