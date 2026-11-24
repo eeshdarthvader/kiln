@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Kiln: label an issue, get a reviewed, merged change</title>
+<title>Kiln: label an issue, get a reviewed pull request</title>
 <meta name="description" content="Kiln runs a pipeline of Claude Code agents, each in its own container and terminal, reviews the result, and merges it when your merge policy allows.">
 <meta name="theme-color" content="#0a0c12">
 <link rel="icon" type="image/svg+xml" href="assets/kiln-logo.svg">
@@ -34,11 +34,11 @@ nav{display:flex;gap:26px;font-size:15px}
 nav a{color:var(--smoke);text-decoration:none}
 nav a:hover{color:var(--bone)}
 
-.hero{padding:72px 0 40px}
-.hero h1{font-size:clamp(46px,8.4vw,108px);font-weight:800;max-width:11.5em}
+.hero{padding:72px 0 40px;text-align:center}
+.hero h1{font-size:clamp(34px,5.6vw,72px);font-weight:800;max-width:14em;margin-left:auto;margin-right:auto}
 .hero h1 span{display:block;background:var(--heat);-webkit-background-clip:text;background-clip:text;color:transparent}
-.lede{max-width:34em;margin:28px 0 0;font-size:clamp(18px,2.2vw,21px);color:var(--smoke)}
-.cta{display:flex;flex-wrap:wrap;gap:14px;margin-top:34px}
+.lede{max-width:34em;margin:24px auto 0;font-size:clamp(16px,1.8vw,19px);color:var(--smoke)}
+.cta{display:flex;flex-wrap:wrap;justify-content:center;gap:14px;margin-top:30px}
 .btn{display:inline-block;padding:13px 22px;border-radius:10px;font-weight:500;text-decoration:none;border:1px solid var(--line);color:var(--bone);background:var(--ash)}
 .btn:hover{border-color:var(--ember);color:var(--bone)}
 .btn.primary{border:0;color:#1a0d06;background:var(--heat);box-shadow:0 8px 30px #ff6a3d40}
@@ -120,7 +120,7 @@ footer div{display:flex;gap:24px;flex-wrap:wrap}
 
   <main>
     <div class="hero">
-      <h1>Label an issue.<span>Get a reviewed, merged change.</span></h1>
+      <h1>Label an issue.<span>Get a reviewed pull request.</span></h1>
       <p class="lede">Kiln runs a pipeline of Claude Code agents, each in its own container and terminal, reviews the result, and merges it when your merge policy allows. Otherwise it holds the change for you.</p>
       <div class="cta">
         <a class="btn primary" href="#start">Run it locally</a>
