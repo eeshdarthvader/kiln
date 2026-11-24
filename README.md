@@ -61,6 +61,9 @@ is applied again. Source: [`src/github/intake.ts`](apps/control-plane/src/github
 
 <table>
   <tr>
+    <td colspan="2"><img src="docs/assets/screens/run-running.png" alt="A run in progress: stage timeline, plan progress and a box to steer the agent"><br><sub><b>A run in progress.</b> Live stage timeline, plan progress, and a note box to steer the agent mid-run.</sub></td>
+  </tr>
+  <tr>
     <td width="50%"><img src="docs/assets/screens/runs.png" alt="Runs: everything that needs you, with Approve, Run again and Open pull request"><br><sub><b>Runs.</b> What needs you first: approvals, agent questions, failures, PRs to review.</sub></td>
     <td width="50%"><img src="docs/assets/screens/run-done.png" alt="A finished run with its stage timeline and merged pull request"><br><sub><b>Run detail.</b> Stage timeline, plan, changes, and the Herdr attach command.</sub></td>
   </tr>
