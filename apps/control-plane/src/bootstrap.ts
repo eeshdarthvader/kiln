@@ -147,6 +147,7 @@ export async function start(config: Config = configuration()): Promise<() => Pro
       cancel: (runId) => engine.cancel(runId),
       approve: (runId) => engine.approve(runId),
       reject: (runId, feedback) => engine.reject(runId, feedback),
+      steer: (runId, note) => engine.steer(runId, note),
       tail: (runId) => engine.tail(runId),
       changes: (runId) => changes.changes(runId),
       overlaps: () => changes.overlaps(),

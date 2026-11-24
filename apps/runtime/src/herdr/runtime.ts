@@ -166,6 +166,10 @@ export class HerdrRuntime implements AgentRuntime {
     return result.read.text;
   }
 
+  async sendInput(paneId: string, text: string): Promise<void> {
+    await this.client.call('pane.send_input', { pane_id: paneId, text, keys: ['enter'] });
+  }
+
   async stopStage(paneId: string): Promise<void> {
     await this.client.call('pane.close', { pane_id: paneId }).catch(() => {});
   }
