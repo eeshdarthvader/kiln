@@ -214,6 +214,32 @@ export class Pipeline {
     });
   }
 
+  /**
+   * Sends a person's note to the agent that is working right now. It arrives as one more
+   * message in the agent's terminal, so the agent reads it at its next opportunity.
+   */
+  async steer(runId: string, note: string): Promise<Run> {
+    const run = this.core.get(runId);
+    const stage = activeStage(run);
+    if (run.status !== 'running' || !stage?.paneId)
+      throw new FactoryError('The run has no agent working right now.', 409, 'NOT_RUNNING');
+    if (!(await this.runtime.isAlive(stage.paneId)))
+      throw new FactoryError('The agent has already stopped.', 409, 'NOT_RUNNING');
+    // One line only: a newline would submit the message early in the agent's terminal.
+    const line = note
+      .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!line) throw new FactoryError('Write a note first.', 422, 'EMPTY_NOTE');
+    await this.runtime.sendInput(stage.paneId, `Note from a human reviewer, read it now: ${line}`);
+    return this.core.update(runId, (draft) => {
+      draft.notes = [
+        ...(draft.notes ?? []).slice(-19),
+        { text: line, stage: stage.name, sentAt: new Date().toISOString() },
+      ];
+    });
+  }
+
   /** Recent terminal output of the stage that is running, or of the last one that ran. */
   async tail(runId: string, lines = 80): Promise<{ stage: StageName | null; text: string }> {
     const run = this.core.get(runId);

@@ -14,6 +14,7 @@ import {
   useToast,
 } from './components';
 import { issueLabel, prLabel } from './RunList';
+import { SteerBox } from './SteerBox';
 import { Timeline } from './Timeline';
 import { WebTerminal } from './WebTerminal';
 import type { Overlap, Run, RunSummary, StageRecord } from './types';
@@ -309,6 +310,7 @@ export function RunDetail({
             </div>
             <PlanProgress plan={finishedPlan} title={run.title} />
           </section>
+          <SteerBox run={run} api={api} onUpdate={onUpdate} />
           <Changes run={run} api={api} />
           <Terminal run={run} api={api} />
           {terminal && <WebTerminal api={api} runId={run.id} />}

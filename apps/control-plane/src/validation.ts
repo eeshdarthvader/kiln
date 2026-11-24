@@ -88,6 +88,9 @@ export const reportSchema = z
 const issueUrlPattern = /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/issues\/(\d+)\/?(?:[?#].*)?$/;
 export const repoSchema = z.string().regex(/^[\w.-]+\/[\w.-]+$/, 'Use the owner/name form.');
 export const rejectSchema = z.object({ feedback: readable }).strict();
+export const steerSchema = z
+  .object({ note: z.string().trim().min(1, 'Write a note first.').max(1000) })
+  .strict();
 export const newRunSchema = z.object({ issueUrl: z.string().trim().max(500) }).strict();
 
 export function parseIssueUrl(value: string): { repo: string; number: number } {

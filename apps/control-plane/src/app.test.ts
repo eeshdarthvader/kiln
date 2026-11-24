@@ -33,6 +33,7 @@ async function serve(t: TestContext, overrides: Partial<Config> = {}) {
     cancel: (id) => pipeline.cancel(id),
     approve: (id) => pipeline.approve(id),
     reject: (id, feedback) => pipeline.reject(id, feedback),
+    steer: (id, note) => pipeline.steer(id, note),
     tail: (id) => pipeline.tail(id),
     poll: async () => [],
     changes: (id) => changes.changes(id),
@@ -225,4 +226,40 @@ test('the changes endpoint parses the pull request diff and reports checks', asy
   );
   assert.deepEqual(body.checks, [{ name: 'test', state: 'pass' }]);
   assert.equal((await request('/v1/runs/missing/changes')).status, 404);
+});
+
+test('a note is typed into the running agent and recorded; idle runs refuse it', async (t) => {
+  const { runtime, github, request } = await serve(t);
+  github.add(issue());
+  const created = await request('/v1/runs', {
+    method: 'POST',
+    body: JSON.stringify({ issueUrl: 'https://github.com/acme/widgets/issues/7' }),
+  });
+  const run = (await created.json()) as { id: string };
+  await eventually(() => assert.equal(runtime.started.length, 1));
+  const steer = (note: string) =>
+    request(`/v1/runs/${run.id}/steer`, { method: 'POST', body: JSON.stringify({ note }) });
+
+  const sent = await steer('Use the\nexisting helper,\tdo not add a new one.');
+  assert.equal(sent.status, 200);
+  const body = (await sent.json()) as { notes: Array<{ text: string; stage: string }> };
+  assert.equal(body.notes[0]!.text, 'Use the existing helper, do not add a new one.');
+  assert.equal(body.notes[0]!.stage, 'classify');
+  assert.equal(runtime.inputs.length, 1);
+  assert.equal(runtime.inputs[0]!.paneId, runtime.last.paneId);
+  assert.match(runtime.inputs[0]!.text, /human reviewer.*existing helper, do not add/);
+  assert.ok(!runtime.inputs[0]!.text.includes('\n'));
+
+  assert.equal((await steer('   ')).status, 400);
+  runtime.alive.delete(runtime.last.paneId);
+  assert.equal((await steer('Too late.')).status, 409);
+  assert.equal(
+    (
+      await request('/v1/runs/missing/steer', {
+        method: 'POST',
+        body: JSON.stringify({ note: 'x' }),
+      })
+    ).status,
+    404,
+  );
 });

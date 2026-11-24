@@ -24,6 +24,7 @@ async function fixture(t: TestContext, uiDirectory: string) {
       cancel: unused,
       approve: unused,
       reject: unused,
+      steer: unused,
       tail: unused,
       poll: unused,
       changes: unused,
