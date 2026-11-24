@@ -26,11 +26,11 @@ pipeline walks it through six stages. Every stage is a fresh Claude Code agent i
 container, inside a [Herdr](https://herdr.dev) terminal you can attach to at any time.
 
 <p align="center">
-  <a href="https://htmlpreview.github.io/?https://github.com/eeshdarthvader/af/blob/main/docs/architecture.html">
+  <a href="https://htmlpreview.github.io/?https://github.com/eeshdarthvader/kiln/blob/main/docs/architecture.html">
     <img src="docs/assets/architecture.svg" alt="Kiln architecture: intake, control plane, runtime" width="900">
   </a>
   <br>
-  <sub><a href="https://htmlpreview.github.io/?https://github.com/eeshdarthvader/af/blob/main/docs/architecture.html">Open the interactive version</a>: click any block to see what it does.</sub>
+  <sub><a href="https://htmlpreview.github.io/?https://github.com/eeshdarthvader/kiln/blob/main/docs/architecture.html">Open the interactive version</a>: click any block to see what it does.</sub>
 </p>
 
 | Stage         | What the agent does                                                                          |
@@ -79,7 +79,7 @@ human; L3 merges everything that passes. Source:
 
 Each run gets a git worktree and a Herdr workspace with one tab per stage. The agent is Claude Code
 in a container that sees only that worktree, the repository clone and the run directory. Source:
-[`src/herdr`](apps/control-plane/src/herdr).
+[`apps/runtime`](apps/runtime).
 </details>
 
 <details>
@@ -156,7 +156,7 @@ worktree. Source: [`ui/`](apps/control-plane/ui).
 ```bash
 npm install                                  # once, from the repository root
 cp apps/control-plane/.env.example apps/control-plane/.env
-make -C apps/control-plane agent-image       # build the agent container
+make -C apps/runtime agent-image             # build the agent container
 herdr --session factory server &             # the terminal layer
 npm run dev                                  # control plane at http://127.0.0.1:3775
 ```
@@ -167,9 +167,13 @@ else is in the [control plane README](apps/control-plane/README.md).
 
 ## Repository layout
 
-| Path                                       | What it is                                                                 |
-| ------------------------------------------ | -------------------------------------------------------------------------- |
-| [`apps/control-plane`](apps/control-plane) | The server and dashboard: intake, pipeline, autonomy policy, agent runtime |
+| Path                                       | What it is                                                          |
+| ------------------------------------------ | ------------------------------------------------------------------- |
+| [`apps/control-plane`](apps/control-plane) | The server and dashboard: intake, pipeline, autonomy policy, API    |
+| [`apps/runtime`](apps/runtime)             | Where agents run: Herdr client, agent container image, web terminal |
+
+The control plane reaches the runtime only through the `AgentRuntime` interface in
+[`apps/runtime/src/contract.ts`](apps/runtime/src/contract.ts).
 
 New apps and shared packages go under `apps/` and `packages/` (npm workspaces).
 

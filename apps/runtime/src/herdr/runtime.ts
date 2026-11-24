@@ -3,9 +3,7 @@ import { existsSync } from 'node:fs';
 import { chmod, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import type { Config } from '../config.ts';
-import type { Run, StageName } from '../domain.ts';
-import type { AgentRuntime } from '../ports.ts';
+import type { AgentRuntime, RunRef, RuntimeConfig } from '../contract.ts';
 import { HerdrError, type HerdrClient } from './client.ts';
 import { launchScript, quote } from './command.ts';
 
@@ -17,10 +15,10 @@ interface WorkspaceInfo {
 
 export class HerdrRuntime implements AgentRuntime {
   private readonly client: HerdrClient;
-  private readonly config: Config;
+  private readonly config: RuntimeConfig;
   private readonly listeners = new Set<(paneId: string) => void>();
   private unsubscribe: (() => void) | undefined;
-  constructor(client: HerdrClient, config: Config) {
+  constructor(client: HerdrClient, config: RuntimeConfig) {
     this.client = client;
     this.config = config;
   }
@@ -41,7 +39,7 @@ export class HerdrRuntime implements AgentRuntime {
     return join(this.config.home, 'runs-data', runId);
   }
 
-  async createWorkspace(target: Run, repositoryPath: string) {
+  async createWorkspace(target: RunRef, repositoryPath: string) {
     const path = join(this.config.home, 'worktrees', target.id);
     const label = `#${target.issueNumber} ${target.title}`.slice(0, 60);
     let result: { workspace: WorkspaceInfo };
@@ -96,7 +94,7 @@ export class HerdrRuntime implements AgentRuntime {
     return { worktreePath: path, workspaceId: result.workspace.workspace_id };
   }
 
-  async startStage(target: Run, stage: StageName, attempt: number, prompt: string) {
+  async startStage(target: RunRef, stage: string, attempt: number, prompt: string) {
     if (!target.worktreePath || !target.workspaceId)
       throw new HerdrError('state', 'The run has no workspace yet.');
     const runDirectory = this.runDirectory(target.id);

@@ -12,13 +12,11 @@ import { GhCli } from './github/gh.ts';
 import { GitRepository } from './github/git.ts';
 import { Intake } from './github/intake.ts';
 import { PullRequestWatcher } from './github/pulls.ts';
-import { HerdrClient } from './herdr/client.ts';
-import { HerdrRuntime } from './herdr/runtime.ts';
+import { HerdrClient, HerdrRuntime, TerminalService } from '@factory/runtime';
 import { Pipeline } from './pipeline.ts';
 import { loadProviders } from './tasks/providers.ts';
 import { parseIssueUrl } from './validation.ts';
 import { FileRunStore } from './store.ts';
-import { TerminalService } from './terminal.ts';
 
 export class StartupError extends Error {}
 

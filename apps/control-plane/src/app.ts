@@ -6,7 +6,7 @@ import type { Core } from './core.ts';
 import { FactoryError, type Issue, type Run, type StageName } from './domain.ts';
 import { handleError } from './http.ts';
 import { handleMcp } from './mcp.ts';
-import type { TerminalService } from './terminal.ts';
+import type { TerminalService } from '@factory/runtime';
 import { mountUi } from './ui.ts';
 import { newRunSchema, parse, rejectSchema } from './validation.ts';
 
