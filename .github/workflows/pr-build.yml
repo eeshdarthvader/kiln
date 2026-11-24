@@ -31,7 +31,10 @@ jobs:
           python-version: "3.14.8"
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
-      - name: Run repository checks
+      - name: Run control plane checks
         run: make test
         working-directory: apps/control-plane
+      - name: Run runtime checks
+        run: make test
+        working-directory: apps/runtime
 
