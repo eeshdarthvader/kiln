@@ -278,6 +278,15 @@ function App() {
           .includes(needle),
       )
     : runs;
+  // Group by repository, in the order each repository first appears (runs are newest first).
+  const groups = [
+    ...shown
+      .reduce(
+        (map, run) => map.set(run.repo, [...(map.get(run.repo) ?? []), run]),
+        new Map<string, RunSummary[]>(),
+      )
+      .entries(),
+  ];
   const active = runs.filter((run) => run.status === 'running' || run.status === 'queued').length;
   return (
     <ToastProvider>
@@ -346,25 +355,33 @@ function App() {
               </div>
             )}
             <div className="run-nav">
-              <ol>
-                {shown.map((run) => (
-                  <li key={run.id}>
-                    <a
-                      href={`#/runs/${encodeURIComponent(run.id)}`}
-                      aria-current={run.id === selectedId ? 'page' : undefined}
-                      title={`${run.ticket?.key ?? `${run.repo}#${run.issueNumber}`}: ${run.title} (${run.status.replaceAll('_', ' ')})`}
-                    >
-                      <span className={`run-dot run-dot-${run.status}`} aria-hidden="true" />
-                      <span className="run-nav-text">
-                        <span className="run-nav-title">{run.title}</span>
-                        <span className="run-nav-meta">
-                          {issueRef(run)} · {run.status.replaceAll('_', ' ')}
-                        </span>
-                      </span>
-                    </a>
-                  </li>
-                ))}
-              </ol>
+              {groups.map(([repo, items]) => (
+                <details key={repo} className="run-group" open>
+                  <summary title={repo}>
+                    <span className="run-group-name">{repo.split('/').at(-1)}</span>
+                    <span className="run-group-count">{items.length}</span>
+                  </summary>
+                  <ol>
+                    {items.map((run) => (
+                      <li key={run.id}>
+                        <a
+                          href={`#/runs/${encodeURIComponent(run.id)}`}
+                          aria-current={run.id === selectedId ? 'page' : undefined}
+                          title={`${run.ticket?.key ?? `${run.repo}#${run.issueNumber}`}: ${run.title} (${run.status.replaceAll('_', ' ')})`}
+                        >
+                          <span className={`run-dot run-dot-${run.status}`} aria-hidden="true" />
+                          <span className="run-nav-text">
+                            <span className="run-nav-title">{run.title}</span>
+                            <span className="run-nav-meta">
+                              {issueRef(run)} · {run.status.replaceAll('_', ' ')}
+                            </span>
+                          </span>
+                        </a>
+                      </li>
+                    ))}
+                  </ol>
+                </details>
+              ))}
               {needle && !shown.length && (
                 <p className="muted small run-empty">No runs match “{filter}”.</p>
               )}
