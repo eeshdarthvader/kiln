@@ -72,6 +72,10 @@ export class FakeRuntime implements AgentRuntime {
   async tail(paneId: string) {
     return `output of ${paneId}`;
   }
+  readonly inputs: Array<{ paneId: string; text: string }> = [];
+  async sendInput(paneId: string, text: string) {
+    this.inputs.push({ paneId, text });
+  }
   async stopStage(paneId: string) {
     this.alive.delete(paneId);
     this.stopped.push(paneId);

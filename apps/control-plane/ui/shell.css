@@ -627,3 +627,26 @@ button.danger {
     order: 3;
   }
 }
+
+/* Steering notes */
+.steer-history-title {
+  margin: 18px 0 8px;
+  font-size: 13px;
+}
+.steer-history {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.steer-history li {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--info);
+  border-radius: 9px;
+  background: var(--surface);
+}
+.steer-history p {
+  margin: 0;
+}

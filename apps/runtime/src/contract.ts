@@ -36,6 +36,8 @@ export interface AgentRuntime {
   onExit(listener: (paneId: string) => void): () => void;
   isAlive(paneId: string): Promise<boolean>;
   tail(paneId: string, lines: number): Promise<string>;
+  /** Types one line into the pane and presses Enter, as a person at the keyboard would. */
+  sendInput(paneId: string, text: string): Promise<void>;
   stopStage(paneId: string): Promise<void>;
   removeWorkspace(workspaceId: string): Promise<void>;
   close(): void;

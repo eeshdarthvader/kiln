@@ -307,7 +307,11 @@ function App() {
             </span>
           </a>
           <nav className="side-nav" aria-label="Runs">
-            <a className="nav-item" href="#/" aria-current={!selectedId ? 'page' : undefined}>
+            <a
+              className="nav-item"
+              href="#/"
+              aria-current={!selectedId && !insights ? 'page' : undefined}
+            >
               All runs <span>{runs.length}</span>
             </a>
             <a

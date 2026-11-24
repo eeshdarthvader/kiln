@@ -127,6 +127,13 @@ export interface Change {
   deleted: number;
 }
 
+/** A note a person sent to the running agent from the dashboard. */
+export interface SteeringNote {
+  text: string;
+  stage: StageName;
+  sentAt: string;
+}
+
 export interface Run {
   id: string;
   repo: string;
@@ -149,6 +156,8 @@ export interface Run {
   /** The pull request's state on GitHub, refreshed while the run's PR is still open. */
   prState: PrState | null;
   approval: Approval | null;
+  /** Notes sent to the agent while it worked, newest last. */
+  notes?: SteeringNote[];
   policy: PolicyResult | null;
   merge: MergeState | null;
   createdAt: string;

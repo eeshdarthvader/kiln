@@ -8,7 +8,7 @@ import { handleError } from './http.ts';
 import { handleMcp } from './mcp.ts';
 import type { TerminalService } from '@factory/runtime';
 import { mountUi } from './ui.ts';
-import { newRunSchema, parse, rejectSchema } from './validation.ts';
+import { newRunSchema, parse, rejectSchema, steerSchema } from './validation.ts';
 
 function authorized(actual: string | undefined, token: string): boolean {
   const expected = Buffer.from(`Bearer ${token}`);
@@ -28,6 +28,7 @@ export interface Services {
   cancel(runId: string): Promise<Run>;
   approve(runId: string): Promise<Run>;
   reject(runId: string, feedback: string): Promise<Run>;
+  steer(runId: string, note: string): Promise<Run>;
   tail(runId: string): Promise<{ stage: StageName | null; text: string }>;
   poll(): Promise<Run[]>;
   changes(runId: string): Promise<Changes>;
@@ -112,6 +113,9 @@ export function applications(services: Services, uiDirectory?: string) {
   );
   app.post('/v1/runs/:id/reject', async (req, res) =>
     res.json(await services.reject(req.params.id, parse(rejectSchema, req.body).feedback)),
+  );
+  app.post('/v1/runs/:id/steer', async (req, res) =>
+    res.json(await services.steer(req.params.id, parse(steerSchema, req.body).note)),
   );
   // Server-sent events: one `run` event per change, so the dashboard never has to poll.
   app.get('/v1/events', (req, res) => {
