@@ -20,9 +20,12 @@
 
 ---
 
-<p align="center">
-  <img src="docs/assets/screens/home.png" alt="The Kiln dashboard: runs that need you, with approve, run again and open pull request actions" width="900">
-</p>
+<table>
+  <tr>
+    <td width="50%"><img src="docs/assets/screens/home.png" alt="The Kiln dashboard: runs that need you, with approve, run again and open pull request actions"></td>
+    <td width="50%"><img src="docs/assets/screens/home-run.png" alt="Run detail: stage timeline for a run in progress, with its plan and details"></td>
+  </tr>
+</table>
 
 ## How it works
 
