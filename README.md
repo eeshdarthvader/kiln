@@ -57,6 +57,19 @@ is applied again. Source: [`src/github/intake.ts`](apps/control-plane/src/github
 [`src/tasks`](apps/control-plane/src/tasks).
 </details>
 
+## The dashboard
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/assets/screens/runs.png" alt="Runs: everything that needs you, with Approve, Run again and Open pull request"><br><sub><b>Runs.</b> What needs you first: approvals, agent questions, failures, PRs to review.</sub></td>
+    <td width="50%"><img src="docs/assets/screens/run-done.png" alt="A finished run with its stage timeline and merged pull request"><br><sub><b>Run detail.</b> Stage timeline, plan, changes, and the Herdr attach command.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/assets/screens/approval.png" alt="An approval gate for a change that touches authentication code"><br><sub><b>Approval gate.</b> Critical changes pause for you: approve, or send back with feedback.</sub></td>
+    <td width="50%"><img src="docs/assets/screens/insights.png" alt="Insights: success rate, time to done and time per stage"><br><sub><b>Insights.</b> Success rate, time to done, and where each stage spends its time.</sub></td>
+  </tr>
+</table>
+
 <details>
 <summary><b>Pipeline engine</b>: the brain</summary>
 
