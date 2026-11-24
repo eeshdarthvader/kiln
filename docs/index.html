@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kiln: label an issue, get a reviewed, merged change</title>
+<meta name="description" content="Kiln runs a pipeline of Claude Code agents, each in its own container and terminal, reviews the result, and merges it when your merge policy allows.">
+<meta name="theme-color" content="#0a0c12">
+<link rel="icon" type="image/svg+xml" href="assets/kiln-logo.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --soot:#0a0c12; --ash:#121622; --line:#262d42; --bone:#e8ebf5; --smoke:#9aa3bd;
+  --amber:#ffb347; --ember:#ff6a3d; --rose:#ff2e7e; --cool:#5cc8ff;
+  --heat:linear-gradient(135deg,#ffb347,#ff6a3d 55%,#ff2e7e);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--soot);color:var(--bone);font:17px/1.6 "IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;background:radial-gradient(900px 480px at 78% -6%,#ff6a3d22,transparent 70%),radial-gradient(700px 400px at 0% 38%,#5cc8ff12,transparent 70%)}
+a{color:var(--amber);text-underline-offset:3px}
+a:hover{color:#ffd08a}
+:focus-visible{outline:2px solid var(--amber);outline-offset:3px;border-radius:4px}
+.wrap{position:relative;max-width:1080px;margin:0 auto;padding:0 24px}
+h1,h2{font-family:"Bricolage Grotesque",system-ui,sans-serif;letter-spacing:-.025em;line-height:1.04;margin:0}
+code,pre,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+
+header{display:flex;align-items:center;justify-content:space-between;padding:22px 0}
+.brand{display:flex;align-items:center;gap:12px;color:var(--bone);text-decoration:none;font:800 22px "Bricolage Grotesque",sans-serif;letter-spacing:-.02em}
+.brand img{width:34px;height:34px}
+nav{display:flex;gap:26px;font-size:15px}
+nav a{color:var(--smoke);text-decoration:none}
+nav a:hover{color:var(--bone)}
+
+.hero{padding:72px 0 40px}
+.hero h1{font-size:clamp(46px,8.4vw,108px);font-weight:800;max-width:11.5em}
+.hero h1 span{display:block;background:var(--heat);-webkit-background-clip:text;background-clip:text;color:transparent}
+.lede{max-width:34em;margin:28px 0 0;font-size:clamp(18px,2.2vw,21px);color:var(--smoke)}
+.cta{display:flex;flex-wrap:wrap;gap:14px;margin-top:34px}
+.btn{display:inline-block;padding:13px 22px;border-radius:10px;font-weight:500;text-decoration:none;border:1px solid var(--line);color:var(--bone);background:var(--ash)}
+.btn:hover{border-color:var(--ember);color:var(--bone)}
+.btn.primary{border:0;color:#1a0d06;background:var(--heat);box-shadow:0 8px 30px #ff6a3d40}
+.btn.primary:hover{color:#1a0d06;box-shadow:0 10px 38px #ff6a3d66}
+
+/* The firing line: the one animated moment on the page. */
+.fire{margin:56px 0 24px}
+.track{position:relative;display:grid;grid-template-columns:repeat(7,1fr);gap:0;list-style:none;margin:0;padding:0}
+.track::before,.track::after{content:"";position:absolute;left:3.5%;right:3.5%;top:11px;height:4px;border-radius:4px}
+.track::before{background:var(--line)}
+.track::after{background:var(--heat);transform-origin:left;transform:scaleX(0);box-shadow:0 0 14px #ff6a3d99;animation:burn 4.2s cubic-bezier(.4,.1,.2,1) .4s forwards}
+.track li{position:relative;padding-top:34px;text-align:center;font:500 13px/1.3 "IBM Plex Mono",monospace;color:var(--smoke)}
+.track li::before{content:"";position:absolute;left:50%;top:5px;width:16px;height:16px;margin-left:-8px;border-radius:50%;background:var(--soot);border:2px solid var(--line);z-index:1;animation:ignite .5s ease-out forwards;animation-delay:calc(.4s + var(--i) * .6s)}
+.track li:last-child{color:var(--bone)}
+.track li small{display:block;margin-top:4px;font:400 12px/1.3 "IBM Plex Sans",sans-serif;color:#6f7893}
+@keyframes burn{to{transform:scaleX(1)}}
+@keyframes ignite{to{background:var(--amber);border-color:var(--ember);box-shadow:0 0 0 5px #ff6a3d2e,0 0 16px #ff6a3d}}
+.fire p{margin:30px 0 0;color:var(--smoke);max-width:46em}
+
+.shot{margin:56px 0 0}
+.shot img{display:block;width:100%;height:auto;border-radius:14px;border:1px solid var(--line);box-shadow:0 30px 80px #00000099,0 0 0 1px #ffffff08}
+.shot figcaption{margin-top:14px;color:var(--smoke);font-size:15px}
+
+section{padding:96px 0 0}
+section h2{font-size:clamp(32px,5vw,52px);font-weight:800;max-width:14em}
+.intro{margin:18px 0 0;max-width:38em;color:var(--smoke)}
+
+/* Autonomy: four levels, cool to hot, so the colour carries how much Kiln does alone. */
+.ladder{margin:44px 0 0;padding:0;list-style:none;display:grid;gap:0}
+.ladder li{display:grid;grid-template-columns:76px 1fr;gap:22px;padding:22px 0;border-top:1px solid var(--line)}
+.ladder li:last-child{border-bottom:1px solid var(--line)}
+.lvl{font:800 40px/1 "Bricolage Grotesque",sans-serif;letter-spacing:-.03em;color:var(--c)}
+.ladder h3{margin:0 0 4px;font:600 19px/1.3 "IBM Plex Sans",sans-serif}
+.ladder p{margin:0;color:var(--smoke);max-width:40em}
+.note{margin:24px 0 0;color:var(--smoke);max-width:44em}
+.note code{color:var(--amber)}
+
+.cols{display:grid;grid-template-columns:repeat(2,1fr);gap:48px 64px;margin-top:44px}
+.cols h3{margin:0 0 10px;font:600 20px/1.3 "Bricolage Grotesque",sans-serif;letter-spacing:-.01em}
+.cols p{margin:0;color:var(--smoke)}
+
+pre{margin:36px 0 0;padding:24px 26px;overflow-x:auto;background:var(--ash);border:1px solid var(--line);border-radius:12px;font-size:14.5px;line-height:1.8;color:#cfd5e6}
+pre .c{color:#6f7893}
+.after{margin-top:22px;color:var(--smoke);max-width:44em}
+
+footer{margin-top:120px;padding:34px 0 56px;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;gap:12px 32px;justify-content:space-between;color:var(--smoke);font-size:15px}
+footer div{display:flex;gap:24px;flex-wrap:wrap}
+
+@media (max-width:760px){
+  nav{gap:18px}
+  .hero{padding-top:44px}
+  .track{grid-template-columns:1fr;gap:0}
+  .track::before,.track::after{left:7px;right:auto;top:8px;bottom:8px;width:4px;height:auto;transform-origin:top}
+  .track::after{transform:scaleY(0);animation-name:burn-y}
+  .track li{text-align:left;padding:0 0 22px 36px}
+  .track li::before{left:0;top:2px;margin-left:0}
+  @keyframes burn-y{to{transform:scaleY(1)}}
+  .cols{grid-template-columns:1fr;gap:34px}
+  .ladder li{grid-template-columns:56px 1fr;gap:14px}
+  .lvl{font-size:32px}
+}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  .track::after{animation:none;transform:none}
+  .track li::before{animation:none;background:var(--amber);border-color:var(--ember)}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="brand" href="./"><img src="assets/kiln-logo.svg" alt="" width="34" height="34">Kiln</a>
+    <nav aria-label="Primary">
+      <a href="architecture.html">Architecture</a>
+      <a href="#start">Quick start</a>
+      <a href="https://github.com/eeshdarthvader/kiln">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="hero">
+      <h1>Label an issue.<span>Get a reviewed, merged change.</span></h1>
+      <p class="lede">Kiln runs a pipeline of Claude Code agents, each in its own container and terminal, reviews the result, and merges it when your merge policy allows. Otherwise it holds the change for you.</p>
+      <div class="cta">
+        <a class="btn primary" href="#start">Run it locally</a>
+        <a class="btn" href="https://github.com/eeshdarthvader/kiln">View on GitHub</a>
+      </div>
+    </div>
+
+    <div class="fire">
+      <ol class="track" aria-label="The Kiln pipeline">
+        <li style="--i:0">classify<small>Is it ready?</small></li>
+        <li style="--i:1">plan<small>Write the plan</small></li>
+        <li style="--i:2">plan-review<small>Can send it back</small></li>
+        <li style="--i:3">implement<small>Code and tests</small></li>
+        <li style="--i:4">review<small>Can send it back</small></li>
+        <li style="--i:5">pr<small>Open the PR</small></li>
+        <li style="--i:6">merged<small>By your policy</small></li>
+      </ol>
+      <p>Every stage is a fresh agent in a Docker container, working in its own git worktree, inside a <a href="https://herdr.dev">Herdr</a> terminal you can attach to at any time. An unclear issue stops the run and asks a question on the issue.</p>
+    </div>
+
+    <figure class="shot">
+      <img src="assets/screens/home-run.png" width="2880" height="1660" alt="Kiln dashboard showing a run in progress: the stage timeline, plan progress and run details">
+      <figcaption>A run in progress. The dashboard follows every stage, and you can add a note to steer the agent while it works.</figcaption>
+    </figure>
+
+    <section id="autonomy">
+      <h2>You decide how much Kiln does alone</h2>
+      <p class="intro">Each repository picks an autonomy level. Four levels, from never merging to merging anything that passes.</p>
+      <ol class="ladder">
+        <li style="--c:#5cc8ff"><span class="lvl">L0</span><div><h3>Approve every step</h3><p>The run pauses after each stage until you say continue.</p></div></li>
+        <li style="--c:#ffb347"><span class="lvl">L1</span><div><h3>Draft pull request</h3><p>Kiln opens a draft and stops. A person reviews and merges. This is the default.</p></div></li>
+        <li style="--c:#ff6a3d"><span class="lvl">L2</span><div><h3>Merge unless it is critical</h3><p>Kiln merges, or queues the merge until checks pass. Critical paths, one-way decisions and high-risk changes wait for you.</p></div></li>
+        <li style="--c:#ff2e7e"><span class="lvl">L3</span><div><h3>Merge everything that passes</h3><p>For repositories where you trust the tests more than you trust a review queue.</p></div></li>
+      </ol>
+      <p class="note">The rules are read from <code>.factory/policy.json</code> on the base branch, so an agent can't loosen them on its own branch.</p>
+    </section>
+
+    <section id="features">
+      <h2>Built for work that runs while you do something else</h2>
+      <div class="cols">
+        <div><h3>Starts from where your work already is</h3><p>Add the <code>factory</code> label to a GitHub issue, paste a URL, or pull tickets from Jira or any tracker with labels and comments. Status labels follow the run.</p></div>
+        <div><h3>Several runs at once</h3><p>Each run gets its own branch and worktree. The dashboard warns when two touch the same files, and a resolve agent fixes conflicts after another run merges first.</p></div>
+        <div><h3>Review loops, not rubber stamps</h3><p>A reviewer can send the plan or the code back for another pass. Reviewed pull requests describe the change, link the issue and list known limits.</p></div>
+        <div><h3>Stays in your hands</h3><p>Approve a held change or send it back with feedback the agent reads. A needs-you inbox collects approvals, questions and failures in one place.</p></div>
+        <div><h3>Sandboxed, with secrets kept out</h3><p>Each stage runs in a container that sees only its worktree. Credentials come from your environment and never enter the run record or logs.</p></div>
+        <div><h3>Crash-safe</h3><p>Runs persist to disk, resume after a restart, and time out instead of hanging. Fix anything on the fly from a web shell in the run's worktree.</p></div>
+      </div>
+    </section>
+
+    <section id="start">
+      <h2>Run it on your machine</h2>
+      <p class="intro">Kiln needs Node, Docker, the GitHub CLI and Herdr. Everything runs locally.</p>
+<pre><code><span class="c"># once, from the repository root</span>
+npm install
+cp apps/control-plane/.env.example apps/control-plane/.env
+make -C apps/runtime agent-image      <span class="c"># build the agent container</span>
+herdr --session factory server &amp;      <span class="c"># the terminal layer</span>
+npm run dev                           <span class="c"># dashboard at http://127.0.0.1:3775</span></code></pre>
+      <p class="after">Set <code>FACTORY_REPOS=owner/repo</code>, sign in with <code>gh auth login</code>, add a Claude credential from <code>claude setup-token</code>, then label an issue. The <a href="https://github.com/eeshdarthvader/kiln#readme">README</a> covers the rest.</p>
+    </section>
+  </main>
+
+  <footer>
+    <span>Kiln, MIT licensed.</span>
+    <div>
+      <a href="architecture.html">Interactive architecture</a>
+      <a href="https://github.com/eeshdarthvader/kiln">Source on GitHub</a>
+    </div>
+  </footer>
+</div>
+</body>
+</html>
