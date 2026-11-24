@@ -1,23 +1,24 @@
 # Kiln control plane
 
-Takes a GitHub issue, runs it through a pipeline of Claude Code agents, and ends with a draft
-pull request. A small server drives the pipeline; [Herdr](https://herdr.dev) supplies the
-terminals the agents run in, so you can attach and watch or step in at any time.
+Takes a GitHub issue (or a ticket from another tracker), runs it through a pipeline of Claude Code
+agents, and ends with a reviewed pull request. This package is the part that decides: intake, the
+stage state machine, the autonomy policy, the API and the dashboard. Where the agents actually run
+(Herdr, the agent container, the web terminal) is the [runtime](../runtime/README.md); the two meet
+at one interface, `AgentRuntime`.
 
 ```
 GitHub issues ──poll (gh)──▶ intake ─▶ run store (JSON on disk)
                                          │
-dashboard (React, SSE) ◀── HTTP API ◀── pipeline ──▶ Herdr socket API
-                                         ▲                │ worktree, one tab per stage
-                               reporting MCP (:3776)      ▼
-                                         ▲        Herdr session "factory"
-                                         └──────── docker run … claude   (one container per stage)
+dashboard (React, SSE) ◀── HTTP API ◀── pipeline ──AgentRuntime──▶ runtime (Herdr, containers)
+                                         ▲                                     │
+                               reporting MCP (:3776) ◀─────── agent in its container reports back
 ```
 
 ## How a run works
 
-One run per issue. The server starts each stage as a fresh agent in its own Herdr tab, inside
-a container, working in a git worktree for the run's branch (`factory/<issue>-<slug>`).
+One run per issue. The server starts each stage as a fresh agent (in its own Herdr tab and
+container, see the [runtime](../runtime/README.md)) working in a git worktree for the run's branch
+(`factory/<issue>-<slug>`).
 
 | Stage         | What the agent does                                                  | Hand-off file       |
 | ------------- | -------------------------------------------------------------------- | ------------------- |
@@ -98,8 +99,9 @@ The issue shows where the run stands:
 
 ## Requirements
 
-- macOS or Linux with Node 26, Docker, the [`gh`](https://cli.github.com) CLI logged in with
-  push access to the repositories, and [Herdr](https://herdr.dev) 0.9.5 or later.
+- macOS or Linux with Node 26, Docker, Python 3, the [`gh`](https://cli.github.com) CLI logged in
+  with push access to the repositories, and [Herdr](https://herdr.dev) 0.9.5 or later (the
+  [runtime](../runtime/README.md) needs the last three).
 - A Claude Code credential for the agents: run `claude setup-token` and put the result in
   `.env` as `CLAUDE_CODE_OAUTH_TOKEN`, or set `ANTHROPIC_API_KEY`.
 
@@ -107,7 +109,7 @@ The issue shows where the run stands:
 
 ```bash
 npm ci
-make agent-image          # build the agent container (builds apps/runtime) (once, and after Dockerfile changes)
+make agent-image          # build the agent container (once, and after image changes; see ../runtime)
 cp .env.example .env      # set FACTORY_REPOS and the Claude credential
 make herdr                # terminal 1: the Herdr session the factory drives
 make start                # terminal 2: build the dashboard and start the server
@@ -126,6 +128,8 @@ whoever made it: the factory, auto-merge once checks passed, or you on GitHub.
 ## Configuration
 
 Everything is set through environment variables; [`.env.example`](.env.example) lists them all.
+These are the control plane's own. Herdr, agent image, MCP address and web terminal settings are in
+the [runtime's configuration](../runtime/README.md#configuration).
 
 | Variable                 | Default                            | Purpose                                        |
 | ------------------------ | ---------------------------------- | ---------------------------------------------- |
@@ -135,17 +139,8 @@ Everything is set through environment variables; [`.env.example`](.env.example) 
 | `FACTORY_AUTONOMY`       | `L1`                               | Level for repos without `.factory/policy.json` |
 | `FACTORY_MAX_RUNS`       | `2`                                | Runs working at the same time                  |
 | `FACTORY_HOME`           | `~/.factory`                       | Runs, repository clones, worktrees             |
-| `HERDR_SESSION`          | `factory`                          | Herdr session to drive                         |
-| `FACTORY_AGENT_IMAGE`    | `localhost/factory-agent:latest`   | Agent container image                          |
-| `FACTORY_MCP_PUBLIC_URL` | `http://host.docker.internal:3776` | How containers reach the reporting endpoint    |
 | `FACTORY_API_TOKEN`      | unset                              | Require a bearer token on the API              |
 | `FACTORY_TASK_PROVIDERS` | `<home>/providers.json` if present | External task trackers (Jira, ...)             |
-| `FACTORY_TERMINAL`       | `on`                               | Web terminal in the dashboard; `off` disables  |
-| `FACTORY_TERMINAL_SHELL` | `$SHELL`                           | Shell the web terminal starts                  |
-
-On Linux, containers do not resolve `host.docker.internal` by default: set
-`FACTORY_AGENT_DOCKER_ARGS=--add-host=host.docker.internal:host-gateway` and
-`FACTORY_MCP_HOST=0.0.0.0` (or the Docker bridge address).
 
 ## Task providers: Jira and other trackers
 
@@ -188,21 +183,11 @@ Secrets are never in the file: it names the environment variable that holds the 
   `relabel <key> <add,...> <remove,...>` edits labels, and `comment <key>` reads the comment on stdin.
   Add `urlPattern` (first group = ticket key) to let people paste its ticket URLs into "Add issue".
 
-## Web terminal
-
-Each run's page has a **Shell** panel: a shell on the factory host, opened in the run's worktree,
-for fixing things while the agent works (or after it stops). It needs `python3` on the host.
-
-It is a remote shell, so it is guarded: the dashboard first asks the API (which enforces
-`FACTORY_API_TOKEN`) for a one-time ticket valid for 30 seconds, the WebSocket refuses any `Host` or
-`Origin` that is not loopback, and at most four shells are open at once. Set `FACTORY_TERMINAL=off`
-to remove it.
-
 ## Security
 
 - Agents run with Claude Code's permission prompts turned off, which is why each one runs in a
-  container. A container sees only the run's worktree, the repository clone it belongs to, and
-  the run directory.
+  container that sees only the run's worktree, its repository clone and the run directory
+  ([runtime](../runtime/README.md#agent-container)).
 - Agents receive a GitHub token and a Claude credential through `~/.factory/agent.env`
   (owner-readable only). The GitHub token has whatever access your `gh` login has; use a
   fine-grained token in `GH_TOKEN` to narrow it.
@@ -210,8 +195,8 @@ to remove it.
   contractor, and review every pull request. At the default `L1` the factory only opens drafts and never merges;
   `L2` and `L3` merge on their own, so set them only where branch protection and required checks
   stand behind them.
-- The web terminal is a shell as your user. Keep the dashboard on loopback and set
-  `FACTORY_API_TOKEN` if other people share the machine.
+- The dashboard's [web terminal](../runtime/README.md#web-terminal) is a shell as your user. Keep
+  the dashboard on loopback and set `FACTORY_API_TOKEN` if other people share the machine.
 - The dashboard and API listen on `127.0.0.1`. The reporting endpoint has no authentication
   beyond unguessable run IDs; keep `FACTORY_MCP_HOST` on loopback unless you have to change it.
 
@@ -231,6 +216,7 @@ All routes are under `/v1` and return JSON; errors are `{ "error": { "code", "me
 | `POST /v1/runs/:id/cancel`  | Stop a run and remove its worktree                      |
 | `POST /v1/runs/:id/approve` | Approve what the policy held back                       |
 | `POST /v1/runs/:id/reject`  | `{ "feedback" }`: send the run back with your override  |
+| `POST /v1/terminal/tickets` | One-time ticket for the runtime's web terminal          |
 | `GET /v1/events`            | Server-sent `run` events, one per change                |
 
 Agents report on a separate listener, `POST /mcp/runs/:runId/stages/:stage` (MCP over HTTP),
@@ -239,20 +225,22 @@ with the tools `get_reporting_instructions`, `report_status` and `create_attachm
 ## Development
 
 ```bash
-make test        # typecheck, unit tests, formatting, image script tests
+make test        # typecheck, unit tests, formatting, Makefile tests
 make smoke       # one issue through every stage on the live Herdr session, with a stub agent
 npm run dev      # server with reload;  npm run dev:ui  for the dashboard on :5174
 ```
 
 `make smoke` needs `make herdr` running. It uses a local git repository and
 [`scripts/stub-agent.mjs`](scripts/stub-agent.mjs) in place of Docker, Claude and GitHub, so it
-checks the orchestration only. [`../runtime/scripts/herdr-spike.mjs`](../runtime/scripts/herdr-spike.mjs) prints the raw Herdr responses the
-factory depends on; run it after a Herdr upgrade.
+checks the orchestration only. After a Herdr upgrade, run the runtime's
+[`herdr-spike.mjs`](../runtime/scripts/herdr-spike.mjs) to see the raw responses it depends on.
 
 Code map: [`src/pipeline.ts`](src/pipeline.ts) is the stage state machine,
-[`../runtime`](../runtime) (`@factory/runtime`) talks to Herdr and owns the agent image and web terminal, [`src/github/`](src/github) wraps `gh`,
-[`src/core.ts`](src/core.ts) owns run records, [`src/mcp.ts`](src/mcp.ts) is the reporting
-server, and [`ui/`](ui) is the dashboard.
+[`src/github/`](src/github) wraps `gh`, [`src/tasks/`](src/tasks) are the task providers,
+[`src/policy.ts`](src/policy.ts) is the autonomy policy, [`src/core.ts`](src/core.ts) owns run
+records, [`src/mcp.ts`](src/mcp.ts) is the reporting server and [`ui/`](ui) is the dashboard.
+Everything that touches Herdr, containers or a pty lives in [`../runtime`](../runtime)
+(`@factory/runtime`); the pipeline only sees its `AgentRuntime` interface.
 
 ## Not built yet
 
