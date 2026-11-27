@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>Label an issue. Get a reviewed pull request.</b><br>
-  Kiln runs a pipeline of Claude Code agents, each in its own container and terminal, reviews the result, and merges it when your merge policy allows, or holds it for you.
+  Kiln is a software factory: it runs a pipeline of Claude Code agents, each in its own container and terminal, reviews the result, and merges it when your merge policy allows, or holds it for you.
 </p>
 
 <p align="center">
@@ -20,6 +20,8 @@
 </p>
 
 ---
+
+> Kiln was called Software Factory, which is why the trigger label, the `FACTORY_*` settings and the `@factory/*` packages still say "factory".
 
 <p align="center">
   <img src="docs/assets/screens/home-run.png" alt="Kiln run detail: stage timeline for a run in progress, with its plan and details" width="900">
