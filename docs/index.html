@@ -173,13 +173,15 @@ footer div{display:flex;gap:24px;flex-wrap:wrap}
     <section id="start">
       <h2>Run it on your machine</h2>
       <p class="intro">Kiln needs Node, Docker, the GitHub CLI and Herdr. Everything runs locally.</p>
+<pre><code>scripts/setup.sh      <span class="c"># checks your tools, installs, writes .env, builds the agent container</span></code></pre>
+      <p class="after">It never overwrites an existing <code>.env</code>, and <code>--check</code> only reports what is missing. Then start it in two terminals, or do every step by hand:</p>
 <pre><code><span class="c"># once, from the repository root</span>
 npm install
 cp apps/control-plane/.env.example apps/control-plane/.env
 make -C apps/runtime agent-image      <span class="c"># build the agent container</span>
 herdr --session factory server &amp;      <span class="c"># the terminal layer</span>
 npm run dev                           <span class="c"># dashboard at http://127.0.0.1:3775</span></code></pre>
-      <p class="after">Set <code>FACTORY_REPOS=owner/repo</code>, sign in with <code>gh auth login</code>, add a Claude credential from <code>claude setup-token</code>, then label an issue. The <a href="https://github.com/eeshdarthvader/kiln#readme">README</a> covers the rest.</p>
+      <p class="after">The script asks for these; otherwise set <code>FACTORY_REPOS=owner/repo</code>, sign in with <code>gh auth login</code>, add a Claude credential from <code>claude setup-token</code>, then label an issue. The <a href="https://github.com/eeshdarthvader/kiln#readme">README</a> covers the rest.</p>
     </section>
   </main>
 
