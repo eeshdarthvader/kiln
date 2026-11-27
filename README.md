@@ -10,6 +10,7 @@
 </p>
 
 <p align="center">
+  <a href="https://eeshdarthvader.github.io/kiln/">Website</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#features">Features</a> ·
   <a href="#quick-start">Quick start</a> ·
