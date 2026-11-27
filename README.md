@@ -176,6 +176,13 @@ worktree. Source: [`ui/`](apps/control-plane/ui).
 ## Quick start
 
 ```bash
+scripts/setup.sh      # checks your tools, installs, writes .env, builds the agent container
+```
+
+It never overwrites an existing `.env`, and `--check` only reports what is missing. To do it by
+hand:
+
+```bash
 npm install                                  # once, from the repository root
 cp apps/control-plane/.env.example apps/control-plane/.env
 make -C apps/runtime agent-image             # build the agent container

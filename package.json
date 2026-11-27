@@ -8,6 +8,7 @@
     "node": "26.13.1"
   },
   "scripts": {
+    "setup": "bash scripts/setup.sh",
     "start": "npm run start -w @factory/control-plane",
     "dev": "npm run dev -w @factory/control-plane",
     "build": "npm run build --workspaces --if-present",
